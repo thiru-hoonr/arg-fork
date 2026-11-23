@@ -200,7 +200,38 @@ def _merge_same_line(ctx, r, named, same_line):
     return True
 
 
-_PARAM_ARROW = '(^|[(,\\s:=])\\(?\\s*{n}\\s*\\)?\\s*=>|\\(\\s*{n}\\s*,[^)]*\\)\\s*=>'
+TEST_BLOCKS = 'js.test-blocks-unnamed'
+
+
+def _test_blocks_on(ctx):
+    """JavaScript only, switch js.test-blocks-unnamed (iteration 2 of the every-kind check)."""
+    from . import switch_on
+    return ctx.language == 'javascript' and switch_on(TEST_BLOCKS)
+
+
+def _crg_tests_by_line(ctx):
+    """CRG's own Test nodes (it / describe / beforeEach ... blocks) by start line."""
+    out = {}
+    for n in ctx.nodes:
+        if n.kind == 'Test' and 'source' not in (n.extra or {}):
+            out.setdefault(int(n.line_start or 0), []).append(n)
+    return out
+
+
+def _merge_test_block(ctx, r, test_line):
+    """A test block (it('...', () => {...})) is an unnamed callback: the compiler counts it as an unnamed function.
+    CRG stores it as a Test node with a readable name (it:should ...@L12). Instead of adding the module's own node
+    for the same callback, keep CRG's node and its name, and mark it unnamed. Returns True when merged."""
+    cands = test_line.get(int(r['line_start']))
+    if not cands:
+        return False
+    n = next((c for c in cands if int(c.line_end or 0) == int(r['line_end'])), cands[0])
+    cands.remove(n)
+    ctx.tag(n, source='ts-module', name=r['name'], unnamed=True, merged=TEST_BLOCKS)
+    return True
+
+
+_PARAM_ARROW ='(^|[(,\\s:=])\\(?\\s*{n}\\s*\\)?\\s*=>|\\(\\s*{n}\\s*,[^)]*\\)\\s*=>'
 
 
 def _param_named(ctx, n):
@@ -240,6 +271,7 @@ def functions(ctx):
             have.setdefault(n.name, []).append(n.line_start)
     fpath = _fp(ctx)
     same_line = _crg_functions_by_line(ctx) if _same_line_on(ctx) else {}
+    test_line = _crg_tests_by_line(ctx) if _test_blocks_on(ctx) else {}
     if same_line:                                   # CRG nodes a named module row matches by name: never merged
         named_rows = [r for r in rows if r.get('named', True)]
         same_line['claimed'] = {id(n) for ns in list(same_line.values()) for n in ns
@@ -250,6 +282,8 @@ def functions(ctx):
         if named and any(r['line_start'] <= ls <= r['line_end'] for ls in have.get(r['name'], [])):
             continue
         if same_line and _merge_same_line(ctx, r, named, same_line):
+            continue
+        if not named and test_line and _merge_test_block(ctx, r, test_line):
             continue
         label = r.get('label') or r['name']
         is_test = (not named) and label.startswith(TEST_CALLS)
