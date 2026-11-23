@@ -92,6 +92,14 @@ _COLLISION_IDENTITY_RE = re.compile(
 # candidate, an AMBIGUOUS tier. The identity the parser wrote stays under this
 # key, so the edge binds again once only one definition is left.
 _COLLISION_ENDPOINT_KEY = "collision_endpoint"
+# Our fork: post-build resolvers whose bindings are evidence (see _settle_collision_endpoints).
+_FORK_EVIDENCE_RULE = "crg.keep-resolver-evidence"
+_FORK_RESOLVER_RULES = frozenset({
+    "js.require-resolver", "ts.import-resolver", "py.import-resolver", "go.import-resolver",
+    "rust.use-resolver", "java.import-resolver", "kotlin.import-resolver",
+    "lua.require-resolver", "lua.annotation-types",
+    "csharp.import-resolver", "php.import-resolver", "ruby.require-resolver", "swift.import-resolver",
+})
 _COLLISION_AMBIGUOUS_TIER = "AMBIGUOUS"
 _COLLISION_AMBIGUOUS_SCORE = 0.4
 _COLLISION_CALL_KINDS = ("CALLS", "REFERENCES")
@@ -1599,7 +1607,16 @@ class GraphStore:
 
         updates: list[tuple[str, str, str, float, str, str | None, int]] = []
 
+        # Our fork (Iteration 2, rule ``crg.keep-resolver-evidence``): an edge a fork resolver bound from
+        # import/type syntax carries evidence for one definition; this pass would otherwise turn it back
+        # into AMBIGUOUS whenever that definition shares its name (overloads, expect/actual, test modules).
+        from .rules import switch_on
+        keep_evidence = switch_on(_FORK_EVIDENCE_RULE)
+
         def settle(row: sqlite3.Row, column: str, extra: dict, base: str) -> None:
+            if keep_evidence and (extra.get('collision_evidence')
+                                  or extra.get('rule') in _FORK_RESOLVER_RULES):
+                return
             candidates = current(base)
             endpoint = row[column]
             if len(candidates) > 1:

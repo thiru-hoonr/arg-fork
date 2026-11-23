@@ -9,6 +9,7 @@ from __future__ import annotations
 import concurrent.futures
 import fnmatch
 import hashlib
+import importlib
 import json
 import logging
 import os
@@ -282,6 +283,52 @@ def _run_rescript_resolver(store: GraphStore) -> Optional[dict]:
     except Exception as exc:  # noqa: BLE001 - best-effort post-pass
         logger.warning("ReScript cross-module resolver failed: %s", exc)
         return None
+
+
+def _run_lua_resolver(store: GraphStore) -> Optional[dict]:
+    """Our fork: resolve Lua require aliases across files (lua_resolver.py). Never fails a build."""
+    try:
+        from .lua_resolver import resolve_lua_requires
+        return resolve_lua_requires(store)
+    except Exception as exc:  # noqa: BLE001 - best-effort post-pass
+        logger.warning("Lua require resolver failed: %s", exc)
+        return None
+
+
+def _run_js_resolver(store: GraphStore) -> Optional[dict]:
+    """Our fork: bind JS calls fixed by require/import + exports (js_resolver.py). Never fails a build."""
+    try:
+        from .js_resolver import resolve_js_requires
+        return resolve_js_requires(store)
+    except Exception as exc:  # noqa: BLE001 - best-effort post-pass
+        logger.warning("JS require resolver failed: %s", exc)
+        return None
+
+
+FORK_LANG_RESOLVERS = ('fork_ts_resolver', 'fork_py_resolver', 'fork_go_resolver', 'fork_rust_resolver',
+                       'fork_java_resolver', 'fork_kotlin_resolver', 'fork_csharp_resolver', 'fork_php_resolver',
+                       'fork_ruby_resolver', 'fork_swift_resolver')
+
+
+def _run_fork_lang_resolvers(store: GraphStore) -> dict:
+    """Our fork: per-language post-build resolvers (fork_<lang>_resolver.py, each with ``resolve(store)``).
+    A module that does not exist yet is skipped; a failing one never fails the build."""
+    out: dict = {}
+    for mod in FORK_LANG_RESOLVERS:
+        try:
+            m = importlib.import_module(f'.{mod}', __package__)
+        except ModuleNotFoundError as exc:
+            if exc.name and exc.name.endswith(mod):
+                continue
+            logger.warning("%s import failed: %s", mod, exc)
+            out[mod] = None
+            continue
+        try:
+            out[mod] = m.resolve(store)
+        except Exception as exc:  # noqa: BLE001 - best-effort post-pass
+            logger.warning("%s failed: %s", mod, exc)
+            out[mod] = None
+    return out
 
 
 def _run_spring_resolver(store: GraphStore) -> Optional[dict]:
@@ -2824,6 +2871,9 @@ def full_build(
     # says in progress: a process killed here gets a full rebuild.
     python_stats = _run_python_resolver(store)
     rescript_stats = _run_rescript_resolver(store)
+    lua_stats = _run_lua_resolver(store)
+    js_stats = _run_js_resolver(store)
+    fork_lang_stats = _run_fork_lang_resolvers(store)
     spring_stats = _run_spring_resolver(store)
     aop_stats = _run_aop_resolver(store)
     spring_event_stats = _run_spring_event_resolver(store)
@@ -2852,6 +2902,9 @@ def full_build(
         "errors": errors,
         "python_resolution": python_stats,
         "rescript_resolution": rescript_stats,
+        "lua_resolution": lua_stats,
+        "js_resolution": js_stats,
+        "fork_lang_resolution": fork_lang_stats,
         "spring_resolution": spring_stats,
         "aop_resolution": aop_stats,
         "event_resolution": spring_event_stats,

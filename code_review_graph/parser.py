@@ -4117,6 +4117,11 @@ class CodeParser:
         actually parsed (issue #746).
         """
         nodes, edges = self._extract_bytes(path, source)
+        # code-graph-rnd fork: post-parse rules (code_review_graph/rules/). The only change to
+        # upstream parsing; with no active rules this returns nodes/edges untouched.
+        from . import rules as _rules
+        nodes, edges = _rules.apply(self.detect_language(path, source), path, source, nodes, edges,
+                                    repo_root=self._repo_root)
         # Every node from a test file is test code, whatever its kind: the
         # test classes, the fixtures and the private helpers as much as the
         # test functions.  Marking them here rather than at each of the ~40
