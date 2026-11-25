@@ -32,6 +32,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10
     import tomli as tomllib  # type: ignore[import-not-found,no-redef]
 
+from . import rules
 from .config_keys import is_spring_config_path, normalize_spring_config_key
 from .constants import (
     IMPORT_CONTEXT_DEFERRED,
@@ -4117,6 +4118,9 @@ class CodeParser:
         actually parsed (issue #746).
         """
         nodes, edges = self._extract_bytes(path, source)
+        nodes, edges = rules.apply(
+            self, path, self.detect_language(path, source), source, nodes, edges,
+        )
         # Every node from a test file is test code, whatever its kind: the
         # test classes, the fixtures and the private helpers as much as the
         # test functions.  Marking them here rather than at each of the ~40
