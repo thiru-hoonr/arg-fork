@@ -5,12 +5,16 @@ from __future__ import annotations
 from .._rule import Rule
 from .bare_name_calls import store_bare_names_as_calls
 from .class_receiver_calls import unlink_class_receiver_calls_from_instance_methods
+from .eval_strings import add_code_from_eval_strings
 from .macro_methods import add_methods_made_by_macros
 from .setter_assignments import store_setter_assignments_as_setter_calls
 
 RULES: tuple[Rule, ...] = (
     # First: adds the Functions macros make, so every later rule sees the file's methods.
     add_methods_made_by_macros,
+    # Runs crg, these rules included, on the code in class_eval strings, and adds what it finds
+    # on the strings' lines; the rules below then read the file with that code in it.
+    add_code_from_eval_strings,
     # Adds the call crg would make for `name()` before the rules below read the file's calls.
     store_bare_names_as_calls,
     # Renames the call crg makes for `self.x = v` to `x=` before the next rule reads call names:
