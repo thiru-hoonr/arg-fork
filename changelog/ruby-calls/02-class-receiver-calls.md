@@ -38,3 +38,4 @@ lost.
 ## History
 
 - 2026-11-26: added (SYN-F-625, SYN-F-627).
+- 2026-11-26: changed by macro-methods: reads `ruby_class_method`; 14 → 15 tagged edges, `mapping.rb:64`.

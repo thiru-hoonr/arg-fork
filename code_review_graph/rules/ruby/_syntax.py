@@ -44,3 +44,8 @@ def file_path_of(nodes: list[NodeInfo]) -> str:
 def changed(edge: EdgeInfo, rule_name: str, **fields: Any) -> EdgeInfo:
     """*edge* with *fields* changed, tagged with the rule that changed it."""
     return dataclasses.replace(edge, **fields, extra={**edge.extra, "fork_rule": rule_name})
+
+
+# `extra` key on a Function a rule adds for a class method that has no `def self.name` in the
+# syntax (`mattr_accessor :name`), so rules that read class methods from the syntax see it too.
+CLASS_METHOD_KEY = "ruby_class_method"

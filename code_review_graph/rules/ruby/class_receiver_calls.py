@@ -27,7 +27,7 @@ import dataclasses
 from collections import Counter, defaultdict
 from typing import TYPE_CHECKING, NamedTuple
 
-from ._syntax import changed, last_part, lines, text
+from ._syntax import CLASS_METHOD_KEY, changed, last_part, lines, text
 
 if TYPE_CHECKING:
     from tree_sitter import Node
@@ -136,7 +136,9 @@ def _instance_methods_only(
     for node in nodes:
         if node.kind == "Function":
             qualified = parser._node_qualified(node)
-            is_class_method[qualified] |= node.line_start in class_method_lines
+            is_class_method[qualified] |= (
+                node.line_start in class_method_lines or node.extra.get(CLASS_METHOD_KEY, False)
+            )
     return {qualified for qualified, class_method in is_class_method.items() if not class_method}
 
 
