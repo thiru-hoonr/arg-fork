@@ -3784,6 +3784,8 @@ _JS_COMMENT_LANGUAGES = frozenset({"javascript", "typescript", "tsx"})
 _COMMENT = frozenset({"comment"})
 # Syntax that sits between a comment and the code it documents.
 _NOT_CODE = frozenset({"comment", "decorator"})
+# crg makes no node for an overload signature, only for the implementation after it.
+_OVERLOAD_SIGNATURES = frozenset({"function_signature", "method_signature"})
 
 
 class _CommentRun(NamedTuple):
@@ -3853,10 +3855,38 @@ def _skip_siblings(node: Any, types: frozenset[str]) -> Any:
     return node
 
 
+def _declared_name(node: Any) -> Optional[bytes]:
+    """Return the name a declaration, or the declaration an export wraps, declares."""
+    declaration = node.child_by_field_name("declaration") or node
+    name = declaration.child_by_field_name("name")
+    return name.text if name is not None else None
+
+
+def _is_overload_of(node: Any, name: bytes) -> bool:
+    """Return whether the node is an overload signature of the given name."""
+    declaration = node.child_by_field_name("declaration") or node
+    return declaration.type in _OVERLOAD_SIGNATURES and _declared_name(node) == name
+
+
+def _implementation_after_overloads(code: Any) -> Any:
+    """Return the implementation after overload signatures, the code itself, or None."""
+    name = _declared_name(code)
+    if name is None or not _is_overload_of(code, name):
+        return code
+    following = _skip_siblings(code.next_named_sibling, _COMMENT)
+    while following is not None and _is_overload_of(following, name):
+        following = _skip_siblings(following.next_named_sibling, _COMMENT)
+    if following is None or _declared_name(following) != name:
+        return None
+    return following
+
+
 def _next_code_span(comment: Any) -> Optional[_CodeSpan]:
     """Return the lines of the code a comment sits above, or None when no code follows."""
     start = _skip_siblings(comment.next_named_sibling, _COMMENT)
     code = _skip_siblings(start, _NOT_CODE)
+    if code is not None:
+        code = _implementation_after_overloads(code)
     if code is None:
         return None
     return _code_span(start, code)

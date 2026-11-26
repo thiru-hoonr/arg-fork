@@ -182,6 +182,56 @@ def test_comment_above_decorators_documents_the_decorated_code(tmp_path, source,
     assert _documented(nodes, edges) == {documented}
 
 
+@pytest.mark.parametrize(
+    ("source", "documented"),
+    [
+        (
+            "// Echoes a value.\n"
+            "function echo(a: string): string;\n"
+            "function echo(a: number): number;\n"
+            "function echo(a: boolean): boolean;\n"
+            "function echo(a) { return a; }\n",
+            (1, "echo"),
+        ),
+        (
+            "// Echoes a value.\n"
+            "export function echo(a: string): string;\n"
+            "export function echo(a: number): number;\n"
+            "export function echo(a) { return a; }\n",
+            (1, "echo"),
+        ),
+        (
+            "class Leads {\n"
+            "  // Saves a lead.\n"
+            "  save(a: string): void;\n"
+            "  save(a) {}\n"
+            "}\n",
+            (2, "save"),
+        ),
+    ],
+    ids=["function", "exported-function", "method"],
+)
+def test_comment_above_overloads_documents_the_implementation(tmp_path, source, documented):
+    nodes, edges = _parse(tmp_path, "leads.ts", source)
+
+    assert _documented(nodes, edges) == {documented}
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "// Echoes a value.\nfunction echo(a: string): string;\nfunction save() {}\n",
+        "// Echoes a value.\ndeclare function echo(): void;\nfunction save() {}\n",
+        "class Leads {\n  // Saves a lead.\n  save(a: string): void;\n}\n",
+    ],
+    ids=["other-name-below", "ambient-declaration", "last-in-class"],
+)
+def test_comment_above_a_signature_without_its_body_documents_nothing(tmp_path, source):
+    nodes, edges = _parse(tmp_path, "leads.ts", source)
+
+    assert _documented(nodes, edges) == set()
+
+
 def test_comment_documents_the_code_below_it_across_blank_lines(tmp_path):
     nodes, edges = _parse(tmp_path, "leads.js", """
         /** Loads a lead. */
