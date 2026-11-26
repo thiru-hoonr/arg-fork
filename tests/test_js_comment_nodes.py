@@ -167,6 +167,21 @@ def test_comment_documents_the_code_below_it(tmp_path, source, documented):
     assert _documented(nodes, edges) == {documented}
 
 
+@pytest.mark.parametrize(
+    ("source", "documented"),
+    [
+        ("// Lead store.\n@Injectable()\nexport class Leads {}\n", (1, "Leads")),
+        ("// Lead store.\n@Injectable()\n@Scope()\nclass Leads {}\n", (1, "Leads")),
+        ("class Leads {\n  // Loads a lead.\n  @Get()\n  load() {}\n}\n", (2, "load")),
+    ],
+    ids=["exported-class", "class-with-two-decorators", "method"],
+)
+def test_comment_above_decorators_documents_the_decorated_code(tmp_path, source, documented):
+    nodes, edges = _parse(tmp_path, "leads.ts", source)
+
+    assert _documented(nodes, edges) == {documented}
+
+
 def test_comment_documents_the_code_below_it_across_blank_lines(tmp_path):
     nodes, edges = _parse(tmp_path, "leads.js", """
         /** Loads a lead. */

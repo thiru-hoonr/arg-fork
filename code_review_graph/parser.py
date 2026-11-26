@@ -3782,11 +3782,18 @@ def _ansible_is_play_item(item: object) -> bool:
 
 _JS_COMMENT_LANGUAGES = frozenset({"javascript", "typescript", "tsx"})
 _COMMENT = frozenset({"comment"})
+# Syntax that sits between a comment and the code it documents.
+_NOT_CODE = frozenset({"comment", "decorator"})
 
 
 class _CommentRun(NamedTuple):
     first: Any
     last: Any
+
+
+class _CodeSpan(NamedTuple):
+    first_line: int
+    declaration_line: int
 
 
 class _CodeIndex(NamedTuple):
@@ -3846,9 +3853,22 @@ def _skip_siblings(node: Any, types: frozenset[str]) -> Any:
     return node
 
 
-def _next_code(comment: Any) -> Any:
-    """Return the first code after a comment in its block, or None."""
-    return _skip_siblings(comment.next_named_sibling, _COMMENT)
+def _next_code_span(comment: Any) -> Optional[_CodeSpan]:
+    """Return the lines of the code a comment sits above, or None when no code follows."""
+    start = _skip_siblings(comment.next_named_sibling, _COMMENT)
+    code = _skip_siblings(start, _NOT_CODE)
+    if code is None:
+        return None
+    return _code_span(start, code)
+
+
+def _code_span(start: Any, code: Any) -> _CodeSpan:
+    """Return the line start begins and the line the declaration in code begins."""
+    declaration = next((child for child in code.children if child.type not in _NOT_CODE), code)
+    return _CodeSpan(
+        first_line=start.start_point[0] + 1,
+        declaration_line=declaration.start_point[0] + 1,
+    )
 
 
 def _index_code_nodes(nodes: list[NodeInfo]) -> _CodeIndex:
@@ -3869,10 +3889,15 @@ def _documented_code_node(
     """Return the code node a comment run documents, or None."""
     if not _starts_own_line(source, run.first):
         return None
-    following = _next_code(run.last)
-    if following is None:
+    span = _next_code_span(run.last)
+    if span is None:
         return None
-    return next(iter(code.by_start_line.get(following.start_point[0] + 1, [])), None)
+    starting_in_the_span = (
+        node
+        for line in range(span.first_line, span.declaration_line + 1)
+        for node in code.by_start_line.get(line, [])
+    )
+    return next(starting_in_the_span, None)
 
 
 def _enclosing_code_node(comment: Any, code: _CodeIndex) -> Optional[NodeInfo]:
