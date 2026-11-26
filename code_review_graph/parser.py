@@ -3781,6 +3781,7 @@ def _ansible_is_play_item(item: object) -> bool:
 # ---------------------------------------------------------------------------
 
 _JS_COMMENT_LANGUAGES = frozenset({"javascript", "typescript", "tsx"})
+_COMMENT = frozenset({"comment"})
 
 
 class _CommentRun(NamedTuple):
@@ -3789,6 +3790,7 @@ class _CommentRun(NamedTuple):
 
 
 class _CodeIndex(NamedTuple):
+    by_start_line: dict[int, list[NodeInfo]]
     by_span: dict[tuple[int, int], NodeInfo]
 
 
@@ -3837,14 +3839,36 @@ def _js_comment_runs(root: Any, source: bytes) -> list[_CommentRun]:
     return runs
 
 
+def _skip_siblings(node: Any, types: frozenset[str]) -> Any:
+    """Return node, or the first sibling after it, whose type is not in types."""
+    while node is not None and node.type in types:
+        node = node.next_named_sibling
+    return node
+
+
+def _next_code(comment: Any) -> Any:
+    """Return the first code after a comment in its block, or None."""
+    return _skip_siblings(comment.next_named_sibling, _COMMENT)
+
+
 def _index_code_nodes(nodes: list[NodeInfo]) -> _CodeIndex:
-    """Index the file's code nodes by line span."""
+    """Index the file's code nodes by start line and by line span."""
+    by_start_line: dict[int, list[NodeInfo]] = {}
     by_span: dict[tuple[int, int], NodeInfo] = {}
     for node in nodes:
         if node.kind == "File":
             continue
+        by_start_line.setdefault(node.line_start, []).append(node)
         by_span.setdefault((node.line_start, node.line_end), node)
-    return _CodeIndex(by_span=by_span)
+    return _CodeIndex(by_start_line=by_start_line, by_span=by_span)
+
+
+def _documented_code_node(run: _CommentRun, code: _CodeIndex) -> Optional[NodeInfo]:
+    """Return the code node a comment run documents, or None."""
+    following = _next_code(run.last)
+    if following is None:
+        return None
+    return next(iter(code.by_start_line.get(following.start_point[0] + 1, [])), None)
 
 
 def _enclosing_code_node(comment: Any, code: _CodeIndex) -> Optional[NodeInfo]:
@@ -22999,7 +23023,7 @@ class CodeParser:
     def _js_comments(
         self, root: Any, source: bytes, file_path: str, language: str, nodes: list[NodeInfo],
     ) -> tuple[list[NodeInfo], list[EdgeInfo]]:
-        """Return the file's Comment nodes with their CONTAINS edges."""
+        """Return the file's Comment nodes with their CONTAINS and DOCUMENTS edges."""
         code = _index_code_nodes(nodes)
         comment_nodes: list[NodeInfo] = []
         comment_edges: list[EdgeInfo] = []
@@ -23018,6 +23042,15 @@ class CodeParser:
                 file_path=file_path,
                 line=comment.line_start,
             ))
+            documented = _documented_code_node(run, code)
+            if documented is not None:
+                comment_edges.append(EdgeInfo(
+                    kind="DOCUMENTS",
+                    source=comment_qualified,
+                    target=self._node_qualified(documented),
+                    file_path=file_path,
+                    line=comment.line_start,
+                ))
         return comment_nodes, comment_edges
 
     # Leaf node types that typically carry a definition's name across grammars.

@@ -15,3 +15,4 @@ right / missed / invented; score = right ÷ (right + missed + invented).
 | 2 | [full-text](02-full-text.md) | comment text missing | 2026-11-26 |
 | 3 | [line-comment-runs](03-line-comment-runs.md) | one node per `//` line | 2026-11-26 |
 | 4 | [file-contains-comments](04-file-contains-comments.md) | comments belong to nothing | 2026-11-26 |
+| 5 | [comment-documents-code-below](05-comment-documents-code-below.md) | comments linked to no code | 2026-11-26 |

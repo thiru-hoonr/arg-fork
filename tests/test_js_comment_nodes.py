@@ -1,7 +1,8 @@
 """Every JavaScript / TypeScript comment is a ``Comment`` node (SYN-F-616).
 
-Each comment is contained by its file. Consecutive own-line ``//`` lines are one comment. A
-comment's full text is kept, with no length cap.
+Each comment is contained by its file. A comment also ``DOCUMENTS`` the next code in the same
+block, however many blank lines sit between, when that code is a node. Consecutive own-line
+``//`` lines are one comment. A comment's full text is kept, with no length cap.
 """
 
 from __future__ import annotations
@@ -36,6 +37,16 @@ def _comment_on(nodes: list[NodeInfo], line: int) -> NodeInfo:
         f"expected one comment starting on line {line}, comments found: {_comment_lines(nodes)}"
     )
     return starting_on_line[0]
+
+
+def _documented(nodes: list[NodeInfo], edges: list[EdgeInfo]) -> set[tuple[int, str]]:
+    names = {qualified_name_of(node): node.name for node in nodes}
+    comment_lines = {qualified_name_of(node): node.line_start for node in _comments(nodes)}
+    return {
+        (comment_lines[edge.source], names[edge.target])
+        for edge in edges
+        if edge.kind == "DOCUMENTS"
+    }
 
 
 @pytest.mark.parametrize("name", ["leads.js", "leads.ts", "leads.tsx"])
@@ -137,6 +148,77 @@ def test_file_contains_every_comment(tmp_path):
     )
 
     assert contained_comment_lines == [1, 3, 4]
+
+
+@pytest.mark.parametrize(
+    ("source", "documented"),
+    [
+        ("// Loads a lead.\nfunction load() {}\n", (1, "load")),
+        ("// Loads a lead.\nconst load = () => {};\n", (1, "load")),
+        ("// Loads a lead.\nexport const load = async () => {};\n", (1, "load")),
+        ("// Lead store.\nclass Leads {}\n", (1, "Leads")),
+        ("class Leads {\n  // Saves a lead.\n  save() {}\n}\n", (2, "save")),
+    ],
+    ids=["function", "arrow", "exported-arrow", "class", "method"],
+)
+def test_comment_documents_the_code_below_it(tmp_path, source, documented):
+    nodes, edges = _parse(tmp_path, "leads.js", source)
+
+    assert _documented(nodes, edges) == {documented}
+
+
+def test_comment_documents_the_code_below_it_across_blank_lines(tmp_path):
+    nodes, edges = _parse(tmp_path, "leads.js", """
+        /** Loads a lead. */
+
+
+
+        const load = () => {};
+    """)
+
+    assert _documented(nodes, edges) == {(1, "load")}
+
+
+def test_comment_inside_a_body_documents_the_nested_function_below_it(tmp_path):
+    nodes, edges = _parse(tmp_path, "leads.js", """
+        const load = () => {
+          // Formats the lead.
+          function format() {}
+        };
+    """)
+
+    assert _documented(nodes, edges) == {(2, "format")}
+
+
+def test_header_comment_above_an_import_documents_nothing(tmp_path):
+    nodes, edges = _parse(tmp_path, "leads.js", """
+        // Copyright Acme.
+        import express from "express";
+        const load = () => {};
+    """)
+
+    assert _documented(nodes, edges) == set()
+
+
+def test_comment_above_code_that_is_not_a_node_documents_nothing(tmp_path):
+    nodes, edges = _parse(tmp_path, "leads.js", """
+        // Retry count.
+        const retries = 3;
+    """)
+
+    assert _documented(nodes, edges) == set()
+
+
+def test_last_comment_in_a_block_documents_nothing(tmp_path):
+    nodes, edges = _parse(tmp_path, "leads.js", """
+        const load = () => {
+          return 1;
+          // TODO: cache this.
+        };
+        function save() {}
+    """)
+
+    assert _documented(nodes, edges) == set()
 
 
 def test_comment_inside_a_function_records_its_enclosing_function(tmp_path):
