@@ -173,13 +173,37 @@ def test_comment_documents_the_code_below_it(tmp_path, source, documented):
         ("// Lead store.\n@Injectable()\nexport class Leads {}\n", (1, "Leads")),
         ("// Lead store.\n@Injectable()\n@Scope()\nclass Leads {}\n", (1, "Leads")),
         ("class Leads {\n  // Loads a lead.\n  @Get()\n  load() {}\n}\n", (2, "load")),
+        (
+            "class Leads {\n"
+            "  // Loads a lead.\n"
+            "  @Query(() => Boolean)\n"
+            "  load() {\n"
+            "    return true;\n"
+            "  }\n"
+            "}\n",
+            (2, "load"),
+        ),
     ],
-    ids=["exported-class", "class-with-two-decorators", "method"],
+    ids=["exported-class", "class-with-two-decorators", "method", "method-with-arrow-in-decorator"],
 )
 def test_comment_above_decorators_documents_the_decorated_code(tmp_path, source, documented):
     nodes, edges = _parse(tmp_path, "leads.ts", source)
 
     assert _documented(nodes, edges) == {documented}
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class Lead {\n  @Field(() => String)\n  // Display name.\n  name: string;\n}\n",
+        "class Lead {\n  // Display name.\n  @Field(() => String)\n  name: string;\n}\n",
+    ],
+    ids=["among-its-decorators", "above-its-decorators"],
+)
+def test_comment_on_a_decorated_field_documents_nothing(tmp_path, source):
+    nodes, edges = _parse(tmp_path, "leads.ts", source)
+
+    assert _documented(nodes, edges) == set()
 
 
 @pytest.mark.parametrize(

@@ -3796,6 +3796,7 @@ class _CommentRun(NamedTuple):
 class _CodeSpan(NamedTuple):
     first_line: int
     declaration_line: int
+    last_line: int
 
 
 class _CodeIndex(NamedTuple):
@@ -3893,11 +3894,12 @@ def _next_code_span(comment: Any) -> Optional[_CodeSpan]:
 
 
 def _code_span(start: Any, code: Any) -> _CodeSpan:
-    """Return the line start begins and the line the declaration in code begins."""
+    """Return the lines from start to the end of code, and the line its declaration begins."""
     declaration = next((child for child in code.children if child.type not in _NOT_CODE), code)
     return _CodeSpan(
         first_line=start.start_point[0] + 1,
         declaration_line=declaration.start_point[0] + 1,
+        last_line=code.end_point[0] + 1,
     )
 
 
@@ -3922,12 +3924,13 @@ def _documented_code_node(
     span = _next_code_span(run.last)
     if span is None:
         return None
-    starting_in_the_span = (
+    spanning_the_code = (
         node
         for line in range(span.first_line, span.declaration_line + 1)
         for node in code.by_start_line.get(line, [])
+        if node.line_end == span.last_line
     )
-    return next(starting_in_the_span, None)
+    return next(spanning_the_code, None)
 
 
 def _enclosing_code_node(comment: Any, code: _CodeIndex) -> Optional[NodeInfo]:

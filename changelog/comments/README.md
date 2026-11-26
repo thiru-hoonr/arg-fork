@@ -19,3 +19,4 @@ right / missed / invented; score = right ÷ (right + missed + invented).
 | 6 | [end-of-line-comments](06-end-of-line-comments.md) | end-of-line comments documenting the next line | 2026-11-26 |
 | 7 | [comments-above-decorators](07-comments-above-decorators.md) | comments above decorators linked to nothing | 2026-11-26 |
 | 8 | [comments-above-overloads](08-comments-above-overloads.md) | comments above TypeScript overloads linked to nothing | 2026-11-26 |
+| 9 | [whole-declaration](09-whole-declaration.md) | comments linked to a callback inside a decorator | 2026-11-26 |
