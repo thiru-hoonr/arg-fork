@@ -3863,8 +3863,12 @@ def _index_code_nodes(nodes: list[NodeInfo]) -> _CodeIndex:
     return _CodeIndex(by_start_line=by_start_line, by_span=by_span)
 
 
-def _documented_code_node(run: _CommentRun, code: _CodeIndex) -> Optional[NodeInfo]:
+def _documented_code_node(
+    run: _CommentRun, source: bytes, code: _CodeIndex,
+) -> Optional[NodeInfo]:
     """Return the code node a comment run documents, or None."""
+    if not _starts_own_line(source, run.first):
+        return None
     following = _next_code(run.last)
     if following is None:
         return None
@@ -23042,7 +23046,7 @@ class CodeParser:
                 file_path=file_path,
                 line=comment.line_start,
             ))
-            documented = _documented_code_node(run, code)
+            documented = _documented_code_node(run, source, code)
             if documented is not None:
                 comment_edges.append(EdgeInfo(
                     kind="DOCUMENTS",

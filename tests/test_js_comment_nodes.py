@@ -1,8 +1,8 @@
 """Every JavaScript / TypeScript comment is a ``Comment`` node (SYN-F-616).
 
-Each comment is contained by its file. A comment also ``DOCUMENTS`` the next code in the same
-block, however many blank lines sit between, when that code is a node. Consecutive own-line
-``//`` lines are one comment. A comment's full text is kept, with no length cap.
+Each comment is contained by its file. An own-line comment also ``DOCUMENTS`` the next code in
+the same block, however many blank lines sit between, when that code is a node. Consecutive
+own-line ``//`` lines are one comment. A comment's full text is kept, with no length cap.
 """
 
 from __future__ import annotations
@@ -215,6 +215,15 @@ def test_last_comment_in_a_block_documents_nothing(tmp_path):
           return 1;
           // TODO: cache this.
         };
+        function save() {}
+    """)
+
+    assert _documented(nodes, edges) == set()
+
+
+def test_end_of_line_comment_documents_nothing(tmp_path):
+    nodes, edges = _parse(tmp_path, "leads.js", """
+        const total = 1; // running total
         function save() {}
     """)
 
