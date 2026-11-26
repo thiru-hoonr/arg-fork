@@ -85,7 +85,8 @@ def test_only_calls_are_unlinked_not_the_class_containing_the_method(tmp_path):
 
     contains = [short(edge.target) for edge in edges if edge.kind == "CONTAINS"]
     assert "Controller.new" in contains
-    assert calls_on_line(edges, 2) == ["new"]
+    assert "new" in calls_on_line(edges, 2)  # with `resource_class`, a bare-name call
+    assert "Controller.new" not in calls_on_line(edges, 2)
 
 
 def graph_store(repo: Path) -> GraphStore:

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 if TYPE_CHECKING:
     from tree_sitter import Node
 
-    from ...parser import EdgeInfo
+    from ...parser import EdgeInfo, NodeInfo
 
 
 class Lines(NamedTuple):
@@ -31,6 +31,14 @@ def text(node: Node) -> str:
 def last_part(qualified_name: str) -> str:
     """The plain name at the end of a qualified name: ``f`` for ``path::A.f``."""
     return qualified_name.rsplit("::", 1)[-1].rsplit(".", 1)[-1]
+
+
+def file_path_of(nodes: list[NodeInfo]) -> str:
+    """The parsed file's path, from crg's File node: a rule is not given the path."""
+    for node in nodes:
+        if node.kind == "File":
+            return node.file_path
+    raise ValueError(f"no File node among crg's {len(nodes)} nodes: the file's path is unknown")
 
 
 def changed(edge: EdgeInfo, rule_name: str, **fields: Any) -> EdgeInfo:

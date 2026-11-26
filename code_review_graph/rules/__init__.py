@@ -4,6 +4,7 @@
 Rules rely on these crg internals; check each when rebasing the fork onto a new crg release:
 ``CodeParser._get_parser`` (the tree-sitter parser crg uses for a language),
 ``CodeParser._node_qualified`` (the qualified name crg gives a node, the form call targets use),
+``CodeParser._extract_bytes`` (crg's extraction of one file's bytes, without the rules),
 and the ``unresolved_targets`` key in an edge's ``extra``, which crg's post-build pass leaves alone.
 """
 
