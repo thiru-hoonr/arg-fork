@@ -1,7 +1,7 @@
 """Every JavaScript / TypeScript comment is a ``Comment`` node (SYN-F-616).
 
-Consecutive own-line ``//`` lines are one comment. A comment's full text is kept, with no length
-cap.
+Each comment is contained by its file. Consecutive own-line ``//`` lines are one comment. A
+comment's full text is kept, with no length cap.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from textwrap import dedent
 import pytest
 
 from code_review_graph import parser as parser_module
+from code_review_graph.graph import qualified_name_of
 from code_review_graph.parser import CodeParser, EdgeInfo, NodeInfo
 
 
@@ -114,6 +115,46 @@ def test_comment_marker_outside_a_comment_is_not_a_comment(tmp_path, source):
     nodes, _ = _parse(tmp_path, "card.jsx", source)
 
     assert _comment_lines(nodes) == []
+
+
+def test_file_contains_every_comment(tmp_path):
+    nodes, edges = _parse(tmp_path, "leads.js", """
+        // Leads module.
+        const load = () => {
+          // Look the lead up.
+          return 1; // cached
+        };
+    """)
+    [file] = [node for node in nodes if node.kind == "File"]
+    contained = {
+        edge.target for edge in edges if edge.kind == "CONTAINS" and edge.source == file.file_path
+    }
+
+    contained_comment_lines = sorted(
+        comment.line_start
+        for comment in _comments(nodes)
+        if qualified_name_of(comment) in contained
+    )
+
+    assert contained_comment_lines == [1, 3, 4]
+
+
+def test_comment_inside_a_function_records_its_enclosing_function(tmp_path):
+    nodes, _ = _parse(tmp_path, "leads.js", """
+        const load = () => {
+          // Look the lead up.
+          return 1;
+        };
+    """)
+    [load] = [node for node in nodes if node.name == "load"]
+
+    assert _comment_on(nodes, 2).extra["enclosing"] == qualified_name_of(load)
+
+
+def test_top_level_comment_has_no_enclosing_function(tmp_path):
+    nodes, _ = _parse(tmp_path, "leads.js", "// Leads module.\nconst total = 1;\n")
+
+    assert "enclosing" not in _comment_on(nodes, 1).extra
 
 
 def test_other_languages_get_no_comment_nodes(tmp_path):

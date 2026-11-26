@@ -3788,6 +3788,10 @@ class _CommentRun(NamedTuple):
     last: Any
 
 
+class _CodeIndex(NamedTuple):
+    by_span: dict[tuple[int, int], NodeInfo]
+
+
 def _comments_in_order(root: Any) -> Iterator[Any]:
     """Yield the comment nodes under root in source order."""
     pending = [root]
@@ -3833,14 +3837,37 @@ def _js_comment_runs(root: Any, source: bytes) -> list[_CommentRun]:
     return runs
 
 
+def _index_code_nodes(nodes: list[NodeInfo]) -> _CodeIndex:
+    """Index the file's code nodes by line span."""
+    by_span: dict[tuple[int, int], NodeInfo] = {}
+    for node in nodes:
+        if node.kind == "File":
+            continue
+        by_span.setdefault((node.line_start, node.line_end), node)
+    return _CodeIndex(by_span=by_span)
+
+
+def _enclosing_code_node(comment: Any, code: _CodeIndex) -> Optional[NodeInfo]:
+    """Return the innermost code node the comment sits inside, or None."""
+    ancestor = comment.parent
+    while ancestor is not None and ancestor.parent is not None:
+        span = (ancestor.start_point[0] + 1, ancestor.end_point[0] + 1)
+        if span in code.by_span:
+            return code.by_span[span]
+        ancestor = ancestor.parent
+    return None
+
+
 def _comment_node_info(
-    run: _CommentRun, source: bytes, file_path: str, language: str,
+    run: _CommentRun, source: bytes, file_path: str, language: str, enclosing: Optional[str],
 ) -> NodeInfo:
     """Build the Comment node for a run of comments."""
     row, column = run.first.start_point
     extra: dict[str, str] = {
         "text": source[run.first.start_byte:run.last.end_byte].decode("utf-8", errors="replace"),
     }
+    if enclosing is not None:
+        extra["enclosing"] = enclosing
     return NodeInfo(
         kind="Comment",
         name=f"comment@{row + 1}:{column + 1}",
@@ -4475,13 +4502,14 @@ class CodeParser:
 
         if language in _JS_COMMENT_LANGUAGES:
             try:
-                comment_nodes = self._js_comments(
-                    tree.root_node, parse_source, file_path_str, language,
+                comment_nodes, comment_edges = self._js_comments(
+                    tree.root_node, parse_source, file_path_str, language, nodes,
                 )
             except Exception:  # comments must never cost the file its parse
                 logger.warning("comment pass failed on %s", file_path_str, exc_info=True)
             else:
                 nodes = [*nodes, *comment_nodes]
+                edges = [*edges, *comment_edges]
 
         return nodes, edges
 
@@ -22969,13 +22997,28 @@ class CodeParser:
         )
 
     def _js_comments(
-        self, root: Any, source: bytes, file_path: str, language: str,
-    ) -> list[NodeInfo]:
-        """Return the file's Comment nodes."""
-        return [
-            _comment_node_info(run, source, file_path, language)
-            for run in _js_comment_runs(root, source)
-        ]
+        self, root: Any, source: bytes, file_path: str, language: str, nodes: list[NodeInfo],
+    ) -> tuple[list[NodeInfo], list[EdgeInfo]]:
+        """Return the file's Comment nodes with their CONTAINS edges."""
+        code = _index_code_nodes(nodes)
+        comment_nodes: list[NodeInfo] = []
+        comment_edges: list[EdgeInfo] = []
+        for run in _js_comment_runs(root, source):
+            enclosing = _enclosing_code_node(run.first, code)
+            comment = _comment_node_info(
+                run, source, file_path, language,
+                enclosing=self._node_qualified(enclosing) if enclosing else None,
+            )
+            comment_qualified = self._node_qualified(comment)
+            comment_nodes.append(comment)
+            comment_edges.append(EdgeInfo(
+                kind="CONTAINS",
+                source=file_path,
+                target=comment_qualified,
+                file_path=file_path,
+                line=comment.line_start,
+            ))
+        return comment_nodes, comment_edges
 
     # Leaf node types that typically carry a definition's name across grammars.
     # Used when descending from a configured ``name_field`` target to a clean
