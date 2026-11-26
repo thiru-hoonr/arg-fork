@@ -3775,6 +3775,48 @@ def _ansible_is_play_item(item: object) -> bool:
         return True
     return "hosts" in keys and bool(keys & _ANSIBLE_PLAY_KEYS)
 
+
+# ---------------------------------------------------------------------------
+# JavaScript / TypeScript comments (SYN-F-616)
+# ---------------------------------------------------------------------------
+
+_JS_COMMENT_LANGUAGES = frozenset({"javascript", "typescript", "tsx"})
+
+
+class _CommentRun(NamedTuple):
+    first: Any
+    last: Any
+
+
+def _comments_in_order(root: Any) -> Iterator[Any]:
+    """Yield the comment nodes under root in source order."""
+    pending = [root]
+    while pending:
+        node = pending.pop()
+        if node.type == "comment":
+            yield node
+        else:
+            pending.extend(reversed(node.children))
+
+
+def _js_comment_runs(root: Any) -> list[_CommentRun]:
+    """Return one run per comment in the file."""
+    return [_CommentRun(first=node, last=node) for node in _comments_in_order(root)]
+
+
+def _comment_node_info(run: _CommentRun, file_path: str, language: str) -> NodeInfo:
+    """Build the Comment node for a run of comments."""
+    row, column = run.first.start_point
+    return NodeInfo(
+        kind="Comment",
+        name=f"comment@{row + 1}:{column + 1}",
+        file_path=file_path,
+        line_start=row + 1,
+        line_end=run.last.end_point[0] + 1,
+        language=language,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
@@ -4395,6 +4437,14 @@ class CodeParser:
                         line=edge.line,
                         extra=edge.extra.copy(),
                     ))
+
+        if language in _JS_COMMENT_LANGUAGES:
+            try:
+                comment_nodes = self._js_comments(tree.root_node, file_path_str, language)
+            except Exception:  # comments must never cost the file its parse
+                logger.warning("comment pass failed on %s", file_path_str, exc_info=True)
+            else:
+                nodes = [*nodes, *comment_nodes]
 
         return nodes, edges
 
@@ -22880,6 +22930,13 @@ class CodeParser:
             node.file_path,
             node.parent_name,
         )
+
+    def _js_comments(self, root: Any, file_path: str, language: str) -> list[NodeInfo]:
+        """Return the file's Comment nodes."""
+        return [
+            _comment_node_info(run, file_path, language)
+            for run in _js_comment_runs(root)
+        ]
 
     # Leaf node types that typically carry a definition's name across grammars.
     # Used when descending from a configured ``name_field`` target to a clean
