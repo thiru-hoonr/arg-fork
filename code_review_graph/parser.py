@@ -3884,6 +3884,9 @@ def _implementation_after_overloads(code: Any) -> Any:
 
 def _next_code_span(comment: Any) -> Optional[_CodeSpan]:
     """Return the lines of the code a comment sits above, or None when no code follows."""
+    decorated = _declaration_among_whose_decorators(comment)
+    if decorated is not None:
+        return _code_span(decorated, decorated)
     start = _skip_siblings(comment.next_named_sibling, _COMMENT)
     code = _skip_siblings(start, _NOT_CODE)
     if code is not None:
@@ -3891,6 +3894,19 @@ def _next_code_span(comment: Any) -> Optional[_CodeSpan]:
     if code is None:
         return None
     return _code_span(start, code)
+
+
+def _declaration_among_whose_decorators(comment: Any) -> Any:
+    """Return the declaration whose decorators the comment sits among, or None."""
+    parent = comment.parent
+    if parent is None or parent.children[0].type != "decorator":
+        return None
+    for child in parent.children:
+        if child.id == comment.id:
+            return parent
+        if child.type not in _NOT_CODE:
+            return None
+    return None
 
 
 def _code_span(start: Any, code: Any) -> _CodeSpan:

@@ -195,6 +195,63 @@ def test_comment_above_decorators_documents_the_decorated_code(tmp_path, source,
 @pytest.mark.parametrize(
     "source",
     [
+        "@Injectable()\n// Lead store.\nclass Leads {}\n",
+        "@Injectable()\n// Lead store.\n@Scope()\nclass Leads {}\n",
+        "@Injectable()\n// Lead store.\nexport class Leads {}\n",
+        "@Injectable()\n// Lead store.\nexport abstract class Leads {}\n",
+        "@Injectable()\n// Lead store.\nexport default class Leads {}\n",
+        "@Injectable()\n// Lead store.\nclass Leads {}",
+    ],
+    ids=[
+        "class",
+        "between-two-decorators",
+        "exported-class",
+        "abstract-class",
+        "default-export",
+        "no-final-newline",
+    ],
+)
+def test_comment_among_a_class_decorators_documents_the_class(tmp_path, source):
+    nodes, edges = _parse(tmp_path, "leads.ts", source)
+
+    assert _documented(nodes, edges) == {(2, "Leads")}
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class Leads {\n  @Get()\n  // Loads a lead.\n  load() {}\n}\n",
+        "class Leads {\n  @Get()\n  // Loads a lead.\n  @Auth()\n  load() {}\n}\n",
+    ],
+    ids=["one-decorator", "between-two-decorators"],
+)
+def test_comment_among_a_method_decorators_documents_the_method(tmp_path, source):
+    nodes, edges = _parse(tmp_path, "leads.ts", source)
+
+    assert _documented(nodes, edges) == {(3, "load")}
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "@Injectable()\nclass Leads {\n  // Lead count.\n  total = 1;\n}\n",
+        "@Component({\n  // Lead card.\n  selector: 'lead',\n})\nclass Leads {}\n",
+        "@Injectable()\nclass Leads {}\n// Lead store.\n",
+        "@Injectable()\nclass Leads\n// Lead store.\n{}\n",
+    ],
+    ids=["first-in-class-body", "inside-decorator-arguments", "after-the-class", "after-the-name"],
+)
+def test_comment_near_a_decorated_class_but_not_among_its_decorators_documents_nothing(
+    tmp_path, source,
+):
+    nodes, edges = _parse(tmp_path, "leads.ts", source)
+
+    assert _documented(nodes, edges) == set()
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
         "class Lead {\n  @Field(() => String)\n  // Display name.\n  name: string;\n}\n",
         "class Lead {\n  // Display name.\n  @Field(() => String)\n  name: string;\n}\n",
     ],
