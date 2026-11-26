@@ -3804,9 +3804,14 @@ def _js_comment_runs(root: Any) -> list[_CommentRun]:
     return [_CommentRun(first=node, last=node) for node in _comments_in_order(root)]
 
 
-def _comment_node_info(run: _CommentRun, file_path: str, language: str) -> NodeInfo:
+def _comment_node_info(
+    run: _CommentRun, source: bytes, file_path: str, language: str,
+) -> NodeInfo:
     """Build the Comment node for a run of comments."""
     row, column = run.first.start_point
+    extra: dict[str, str] = {
+        "text": source[run.first.start_byte:run.last.end_byte].decode("utf-8", errors="replace"),
+    }
     return NodeInfo(
         kind="Comment",
         name=f"comment@{row + 1}:{column + 1}",
@@ -3814,6 +3819,7 @@ def _comment_node_info(run: _CommentRun, file_path: str, language: str) -> NodeI
         line_start=row + 1,
         line_end=run.last.end_point[0] + 1,
         language=language,
+        extra=extra,
     )
 
 
@@ -4440,7 +4446,9 @@ class CodeParser:
 
         if language in _JS_COMMENT_LANGUAGES:
             try:
-                comment_nodes = self._js_comments(tree.root_node, file_path_str, language)
+                comment_nodes = self._js_comments(
+                    tree.root_node, parse_source, file_path_str, language,
+                )
             except Exception:  # comments must never cost the file its parse
                 logger.warning("comment pass failed on %s", file_path_str, exc_info=True)
             else:
@@ -22931,10 +22939,12 @@ class CodeParser:
             node.parent_name,
         )
 
-    def _js_comments(self, root: Any, file_path: str, language: str) -> list[NodeInfo]:
+    def _js_comments(
+        self, root: Any, source: bytes, file_path: str, language: str,
+    ) -> list[NodeInfo]:
         """Return the file's Comment nodes."""
         return [
-            _comment_node_info(run, file_path, language)
+            _comment_node_info(run, source, file_path, language)
             for run in _js_comment_runs(root)
         ]
 

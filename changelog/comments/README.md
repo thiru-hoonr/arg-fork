@@ -12,3 +12,4 @@ right / missed / invented; score = right ÷ (right + missed + invented).
 | # | Change | Fixes | Added |
 |---|---|---|---|
 | 1 | [comment-nodes](01-comment-nodes.md) | comments dropped | 2026-11-26 |
+| 2 | [full-text](02-full-text.md) | comment text missing | 2026-11-26 |

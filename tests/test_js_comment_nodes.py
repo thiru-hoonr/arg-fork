@@ -1,4 +1,7 @@
-"""Every JavaScript / TypeScript comment is a ``Comment`` node (SYN-F-616)."""
+"""Every JavaScript / TypeScript comment is a ``Comment`` node (SYN-F-616).
+
+A comment's full text is kept, with no length cap.
+"""
 
 from __future__ import annotations
 
@@ -25,6 +28,14 @@ def _comment_lines(nodes: list[NodeInfo]) -> list[tuple[int, int]]:
     return sorted((node.line_start, node.line_end) for node in _comments(nodes))
 
 
+def _comment_on(nodes: list[NodeInfo], line: int) -> NodeInfo:
+    starting_on_line = [node for node in _comments(nodes) if node.line_start == line]
+    assert len(starting_on_line) == 1, (
+        f"expected one comment starting on line {line}, comments found: {_comment_lines(nodes)}"
+    )
+    return starting_on_line[0]
+
+
 @pytest.mark.parametrize("name", ["leads.js", "leads.ts", "leads.tsx"])
 @pytest.mark.parametrize(
     "comment", ["// Loads a lead.", "/* Loads a lead. */", "/** Loads a lead. */"]
@@ -33,6 +44,26 @@ def test_each_comment_style_is_one_comment_node(tmp_path, name, comment):
     nodes, _ = _parse(tmp_path, name, f"{comment}\nconst total = 1;\n")
 
     assert _comment_lines(nodes) == [(1, 1)]
+
+
+def test_comment_text_is_kept_whole(tmp_path):
+    comment = dedent("""
+        /**
+         * Loads a lead.
+         * @param {string} id - the lead id
+         * @returns {Promise<Lead>}
+         */
+    """).strip()
+    nodes, _ = _parse(tmp_path, "leads.js", f"{comment}\nconst load = (id) => {{}};\n")
+
+    assert _comment_on(nodes, 1).extra["text"] == comment
+
+
+def test_long_comment_text_is_not_cut(tmp_path):
+    comment = "// " + "lead " * 200
+    nodes, _ = _parse(tmp_path, "leads.js", f"{comment}\nconst total = 1;\n")
+
+    assert _comment_on(nodes, 1).extra["text"] == comment
 
 
 def test_jsx_comment_is_a_comment_node(tmp_path):
