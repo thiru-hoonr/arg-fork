@@ -8,6 +8,7 @@ from .class_receiver_calls import unlink_class_receiver_calls_from_instance_meth
 from .eval_strings import add_code_from_eval_strings
 from .macro_methods import add_methods_made_by_macros
 from .setter_assignments import store_setter_assignments_as_setter_calls
+from .setter_definitions import add_setter_definitions
 
 RULES: tuple[Rule, ...] = (
     # First: adds the Functions macros make, so every later rule sees the file's methods.
@@ -17,8 +18,11 @@ RULES: tuple[Rule, ...] = (
     add_code_from_eval_strings,
     # Adds the call crg would make for `name()` before the rules below read the file's calls.
     store_bare_names_as_calls,
-    # Renames the call crg makes for `self.x = v` to `x=` before the next rule reads call names:
+    # Renames the call crg makes for `self.x = v` to `x=` before the rules below read call names:
     # the setter call has no receiver that is a class, and must not be read as a call to `x`.
     store_setter_assignments_as_setter_calls,
+    # Adds the Function for `def x=` and links the `x=` calls of the rule above to it, so the next
+    # rule can unlink a call on a class (`A.x = v`) that crg's linking gave an instance setter.
+    add_setter_definitions,
     unlink_class_receiver_calls_from_instance_methods,
 )

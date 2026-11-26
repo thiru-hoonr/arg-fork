@@ -56,6 +56,10 @@ def controller(call: str) -> str:
     ("Other.find(1)", "find"),
     ("Devise::Mapping.find(1)", "find"),
     ("self.class.timeout", "timeout"),
+    # `Other.timeout += 1` reads `timeout` before it writes it (setter-assignments keeps the read)
+    ("Other.timeout += 1", "timeout"),
+    # a call on a class on the right of an attribute assignment is read, not written
+    ("self.level = Other.find(1)", "find"),
 ])
 def test_call_on_a_class_is_not_linked_to_an_instance_method(tmp_path, call, name):
     _, edges = parse(tmp_path, "controller.rb", controller(call))

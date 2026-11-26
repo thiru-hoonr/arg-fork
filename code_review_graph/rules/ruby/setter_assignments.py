@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import TYPE_CHECKING, NamedTuple
 
-from ._syntax import changed, last_part, lines, text
+from ._syntax import READS_BEFORE_WRITING, changed, last_part, lines, text
 
 if TYPE_CHECKING:
     from tree_sitter import Node
@@ -28,9 +28,6 @@ if TYPE_CHECKING:
 
 RULE_NAME = "setter-assignments"
 
-# tree-sitter's Ruby assignments, and whether each reads the attribute before it writes it:
-# `a.b = v` only writes; `a.b += v` and `a.b ||= v` read `a.b` first.
-_READS_BEFORE_WRITING = {"assignment": False, "operator_assignment": True}
 
 
 class SetterCall(NamedTuple):
@@ -64,13 +61,13 @@ def _setter_calls(root: Node) -> list[SetterCall]:
     while pending:
         node = pending.pop()
         pending.extend(node.children)
-        if node.type not in _READS_BEFORE_WRITING:
+        if node.type not in READS_BEFORE_WRITING:
             continue
         target = node.child_by_field_name("left")
         # only a call has a `method` field: `@b = v`, `a[:b] = v` and `B = v` have none
         attribute = target.child_by_field_name("method") if target else None
         if attribute is not None:
-            reads_first = _READS_BEFORE_WRITING[node.type]
+            reads_first = READS_BEFORE_WRITING[node.type]
             found.append(SetterCall(lines(target).first, text(attribute), reads_first))
     return found
 

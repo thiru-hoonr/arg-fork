@@ -89,3 +89,4 @@ goes from 414 ms to 506 ms), most of it parsing the tree again.
 ## History
 
 - 2026-11-26: added (SYN-F-631).
+- 2026-11-26: its relinking moved to `_syntax.py` (`relinked`) for change 6; behaviour unchanged.

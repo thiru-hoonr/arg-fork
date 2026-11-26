@@ -39,3 +39,5 @@ lost.
 
 - 2026-11-26: added (SYN-F-625, SYN-F-627).
 - 2026-11-26: changed by macro-methods: reads `ruby_class_method`; 14 → 15 tagged edges, `mapping.rb:64`.
+- 2026-11-26: changed by setter-definitions: reads the target of `A.x = v` as a call to `x=`
+  (and `A.x += v` as `x` and `x=`), so a setter call on a class is unlinked from an instance setter.

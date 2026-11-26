@@ -8,7 +8,14 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 if TYPE_CHECKING:
     from tree_sitter import Node
 
-    from ...parser import EdgeInfo, NodeInfo
+    from ...parser import CodeParser, EdgeInfo, NodeInfo
+
+
+# tree-sitter's Ruby assignments, and whether each reads the attribute before it writes it:
+# `a.b = v` only writes (a call to `b=`); `a.b += v` and `a.b ||= v` read `a.b` first (`b`, `b=`).
+READS_BEFORE_WRITING = {"assignment": False, "operator_assignment": True}
+_LEFT_FIELD = "left"
+_SETTER_SUFFIX = "="
 
 
 class Lines(NamedTuple):
@@ -33,6 +40,19 @@ def last_part(qualified_name: str) -> str:
     return qualified_name.rsplit("::", 1)[-1].rsplit(".", 1)[-1]
 
 
+def names_called(call: Node, method: Node) -> list[str]:
+    """The methods *call* runs: `b=` for the target of `a.b = v`, `b` and `b=` for `a.b += v`."""
+    assignment = call.parent
+    if (
+        assignment is None
+        or assignment.type not in READS_BEFORE_WRITING
+        or assignment.child_by_field_name(_LEFT_FIELD) != call
+    ):
+        return [text(method)]
+    setter = text(method) + _SETTER_SUFFIX
+    return [text(method), setter] if READS_BEFORE_WRITING[assignment.type] else [setter]
+
+
 def file_path_of(nodes: list[NodeInfo]) -> str:
     """The parsed file's path, from crg's File node: a rule is not given the path."""
     for node in nodes:
@@ -49,3 +69,31 @@ def changed(edge: EdgeInfo, rule_name: str, **fields: Any) -> EdgeInfo:
 # `extra` key on a Function a rule adds for a class method that has no `def self.name` in the
 # syntax (`mattr_accessor :name`), so rules that read class methods from the syntax see it too.
 CLASS_METHOD_KEY = "ruby_class_method"
+
+
+def relinked(
+    parser: CodeParser,
+    nodes: list[NodeInfo],
+    edges: list[EdgeInfo],
+    file_path: str,
+    names: set[str],
+    rule_name: str,
+) -> list[EdgeInfo]:
+    """*edges* with each call to one of *names* linked again by crg's same-file linking.
+
+    A rule that adds Functions calls this so crg's linking sees them; an edge it links elsewhere
+    names *rule_name*.
+    """
+    # crg links a Ruby call only within its file while it parses, so every link here is local
+    indexes = [
+        index for index, edge in enumerate(edges)
+        if edge.kind == "CALLS" and last_part(edge.target) in names
+    ]
+    bare = [dataclasses.replace(edges[i], target=last_part(edges[i].target)) for i in indexes]
+    linked = parser._resolve_call_targets(nodes, bare, file_path)
+    result = list(edges)
+    # crg resolves edge for edge; a different count is not understood and fails the rule
+    for index, edge in zip(indexes, linked, strict=True):
+        if edge.target != edges[index].target:
+            result[index] = changed(edge, rule_name)
+    return result

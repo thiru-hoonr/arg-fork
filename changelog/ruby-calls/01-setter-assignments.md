@@ -28,8 +28,10 @@ cannot be scored as right: the setter has no Function in crg, so its call stays 
 ## Known limits
 
 - `a.x, b.y = 1, 2` (several targets at once) is left as crg makes it.
-- The setter call is not linked to `def x=`, because crg stores no Function for it.
+- The setter call is linked to `def x=` only by change 6 (`setter-definitions`), and only
+  within the setter's own file.
 
 ## History
 
 - 2026-11-26: added (SYN-F-627).
+- 2026-11-26: the table of assignments moved to `_syntax.py` (`READS_BEFORE_WRITING`) for change 6.

@@ -25,14 +25,22 @@ a name the class already defines.
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 import re
 from collections import Counter
 from typing import TYPE_CHECKING, NamedTuple
 
 from ... import parser as crg
-from ._syntax import CLASS_METHOD_KEY, Lines, changed, file_path_of, last_part, lines, text
+from ._syntax import (
+    CLASS_METHOD_KEY,
+    Lines,
+    changed,
+    file_path_of,
+    last_part,
+    lines,
+    relinked,
+    text,
+)
 
 if TYPE_CHECKING:
     from tree_sitter import Node
@@ -115,7 +123,8 @@ def add_methods_made_by_macros(
     nodes = _in_line_order(nodes, [new.node for new in added])
     edges = [*edges, *(new.contains for new in added)]
     edges = _with_block_calls_moved(parser, edges, file_path, added)
-    return nodes, _relinked(parser, nodes, edges, file_path, added)
+    names = {new.node.name for new in added}
+    return nodes, relinked(parser, nodes, edges, file_path, names, RULE_NAME)
 
 
 def _macro_methods(root: Node) -> list[MacroMethod]:
@@ -337,29 +346,3 @@ def _call_names(body: Node) -> Counter[tuple[int, str]]:
             found[(lines(node).first, text(method))] += 1
     return found
 
-
-def _relinked(
-    parser: CodeParser,
-    nodes: list[NodeInfo],
-    edges: list[EdgeInfo],
-    file_path: str,
-    added: list[AddedMethod],
-) -> list[EdgeInfo]:
-    """*edges* with each call named after a new method linked again by crg's same-file linking.
-
-    crg's linking now sees the new Functions; an edge it links elsewhere names the rule.
-    """
-    names = {new.node.name for new in added}
-    # crg links a Ruby call only within its file while it parses, so every link here is local
-    indexes = [
-        index for index, edge in enumerate(edges)
-        if edge.kind == "CALLS" and last_part(edge.target) in names
-    ]
-    bare = [dataclasses.replace(edges[i], target=last_part(edges[i].target)) for i in indexes]
-    relinked = parser._resolve_call_targets(nodes, bare, file_path)
-    result = list(edges)
-    # crg resolves edge for edge; a different count is not understood and fails the rule
-    for index, edge in zip(indexes, relinked, strict=True):
-        if edge.target != edges[index].target:
-            result[index] = changed(edge, RULE_NAME)
-    return result

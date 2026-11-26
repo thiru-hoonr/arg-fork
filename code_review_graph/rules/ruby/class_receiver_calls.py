@@ -27,7 +27,7 @@ import dataclasses
 from collections import Counter, defaultdict
 from typing import TYPE_CHECKING, NamedTuple
 
-from ._syntax import CLASS_METHOD_KEY, changed, last_part, lines, text
+from ._syntax import CLASS_METHOD_KEY, changed, last_part, lines, names_called, text
 
 if TYPE_CHECKING:
     from tree_sitter import Node
@@ -85,11 +85,13 @@ def _calls_by_receiver(root: Node) -> tuple[Counter[CallName], Counter[CallName]
         method = node.child_by_field_name("method") if node.type == "call" else None
         if method is None:
             continue
-        call = CallName(lines(node).first, text(method))
-        if _is_on_a_class(node.child_by_field_name("receiver"), call.name):
-            on_a_class[call] += 1
-        else:
-            on_anything_else[call] += 1
+        # `A.x = v` runs `x=`: rule setter-assignments names its call so
+        for name in names_called(node, method):
+            call = CallName(lines(node).first, name)
+            if _is_on_a_class(node.child_by_field_name("receiver"), call.name):
+                on_a_class[call] += 1
+            else:
+                on_anything_else[call] += 1
     return on_a_class, on_anything_else
 
 
