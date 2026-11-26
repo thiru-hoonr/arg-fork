@@ -1,6 +1,7 @@
 """Every JavaScript / TypeScript comment is a ``Comment`` node (SYN-F-616).
 
-A comment's full text is kept, with no length cap.
+Consecutive own-line ``//`` lines are one comment. A comment's full text is kept, with no length
+cap.
 """
 
 from __future__ import annotations
@@ -44,6 +45,38 @@ def test_each_comment_style_is_one_comment_node(tmp_path, name, comment):
     nodes, _ = _parse(tmp_path, name, f"{comment}\nconst total = 1;\n")
 
     assert _comment_lines(nodes) == [(1, 1)]
+
+
+def test_consecutive_line_comments_are_one_comment_node(tmp_path):
+    nodes, _ = _parse(tmp_path, "leads.js", """
+        // Loads a lead.
+        // Throws when the lead is archived.
+        // Cached for a minute.
+        const total = 1;
+    """)
+
+    assert _comment_lines(nodes) == [(1, 3)]
+
+
+def test_blank_line_splits_line_comments_into_two_nodes(tmp_path):
+    nodes, _ = _parse(tmp_path, "leads.js", """
+        // Section: leads.
+
+        // Loads a lead.
+        const total = 1;
+    """)
+
+    assert _comment_lines(nodes) == [(1, 1), (3, 3)]
+
+
+def test_end_of_line_comment_is_not_merged_with_the_comment_below(tmp_path):
+    nodes, _ = _parse(tmp_path, "leads.js", """
+        const total = 1; // running total
+        // Loads a lead.
+        const load = () => {};
+    """)
+
+    assert _comment_lines(nodes) == [(1, 1), (2, 2)]
 
 
 def test_comment_text_is_kept_whole(tmp_path):

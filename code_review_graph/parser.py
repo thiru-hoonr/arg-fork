@@ -3799,9 +3799,38 @@ def _comments_in_order(root: Any) -> Iterator[Any]:
             pending.extend(reversed(node.children))
 
 
-def _js_comment_runs(root: Any) -> list[_CommentRun]:
-    """Return one run per comment in the file."""
-    return [_CommentRun(first=node, last=node) for node in _comments_in_order(root)]
+def _starts_own_line(source: bytes, node: Any) -> bool:
+    """Return whether only whitespace sits before the node on its line."""
+    line_start = source.rfind(b"\n", 0, node.start_byte) + 1
+    return not source[line_start:node.start_byte].strip()
+
+
+def _is_line_comment(source: bytes, node: Any) -> bool:
+    """Return whether the comment is a `//` comment."""
+    return source.startswith(b"//", node.start_byte)
+
+
+def _continues_line_run(source: bytes, run: _CommentRun, node: Any) -> bool:
+    """Return whether the comment extends the run of own-line `//` comments above it."""
+    between = source[run.last.end_byte:node.start_byte]
+    return (
+        _is_line_comment(source, run.last)
+        and _is_line_comment(source, node)
+        and _starts_own_line(source, run.first)
+        and between.count(b"\n") == 1
+        and not between.strip()
+    )
+
+
+def _js_comment_runs(root: Any, source: bytes) -> list[_CommentRun]:
+    """Group the file's comments into runs, merging consecutive own-line `//` lines."""
+    runs: list[_CommentRun] = []
+    for node in _comments_in_order(root):
+        if runs and _continues_line_run(source, runs[-1], node):
+            runs[-1] = runs[-1]._replace(last=node)
+        else:
+            runs.append(_CommentRun(first=node, last=node))
+    return runs
 
 
 def _comment_node_info(
@@ -22945,7 +22974,7 @@ class CodeParser:
         """Return the file's Comment nodes."""
         return [
             _comment_node_info(run, source, file_path, language)
-            for run in _js_comment_runs(root)
+            for run in _js_comment_runs(root, source)
         ]
 
     # Leaf node types that typically carry a definition's name across grammars.
