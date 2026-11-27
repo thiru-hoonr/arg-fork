@@ -38,6 +38,10 @@ _SINGLE_SUPERCLASS = frozenset({
 #: How far up a chain to walk before giving up.
 _MAX_DEPTH = 32
 
+#: crg-fork (SYN-F-635): INHERITS ``extra`` key fork rule ``class-parents`` writes: the parent's
+#: place in Ruby's method lookup order, from 1.
+_RUBY_ANCESTOR = "ruby_ancestor"
+
 
 def _load_extra(raw: Optional[str]) -> dict:
     try:
@@ -162,6 +166,7 @@ class InheritanceIndex:
                 )
 
         self._parents: dict[str, tuple[list[str], bool]] = {}
+        self._ruby_parents: dict[str, list[Optional[str]]] = {}
         self._inherited: dict[tuple[str, str], Optional[str]] = {}
 
     # -- Lookups ------------------------------------------------------------
@@ -318,6 +323,8 @@ class InheritanceIndex:
         return self._parents[class_name]
 
     def _walk(self, class_name: str, method: str) -> Optional[str]:
+        if self._classes[class_name][2] == "ruby":
+            return self._ruby_walk(class_name, method)
         current = class_name
         seen = {current}
         for _ in range(_MAX_DEPTH):
@@ -363,3 +370,38 @@ class InheritanceIndex:
         else:
             return None
         return next(iter(found)) if len(found) == 1 else None
+
+    def _ruby_walk(self, class_name: str, method: str) -> Optional[str]:
+        """crg-fork (SYN-F-635): the method Ruby runs, found in Ruby's ancestor order.
+
+        Ruby looks in the modules a class includes, the last included first, each followed by
+        the modules it includes, and then in the superclass and its ancestors
+        (``Module#ancestors``). The first ancestor declaring *method* is the answer; a parent
+        outside the graph met before it may declare it too, so then there is none.
+        """
+        seen = {class_name}
+        pending = list(reversed(self._ruby_parents_of(class_name)))  # the next is last
+        while pending:
+            parent = pending.pop()
+            if parent is None:
+                return None
+            if parent in seen:
+                continue
+            seen.add(parent)
+            found = self._methods.get((parent, method))
+            if found:
+                return found
+            pending.extend(reversed(self._ruby_parents_of(parent)))
+        return None
+
+    def _ruby_parents_of(self, class_name: str) -> list[Optional[str]]:
+        """*class_name*'s parents in Ruby's lookup order; None for one outside the graph."""
+        if class_name not in self._ruby_parents:
+            raw_parents = sorted(
+                self._raw_parents.get(class_name, ()),
+                key=lambda raw: raw[1].get(_RUBY_ANCESTOR, 0),
+            )
+            self._ruby_parents[class_name] = [
+                self._resolve_parent(class_name, raw, extra) for raw, extra in raw_parents
+            ]
+        return self._ruby_parents[class_name]

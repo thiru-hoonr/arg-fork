@@ -125,8 +125,8 @@ def test_inherits_edge_names_the_rule(tmp_path):
     _, edges = parse(tmp_path, "class Child < Base\n  include Helpers\nend\n")
 
     assert [e.extra for e in edges if e.kind == "INHERITS"] == [
-        {"fork_rule": RULE_NAME},
-        {"fork_rule": RULE_NAME},
+        {"fork_rule": RULE_NAME, "ruby_ancestor": 1},
+        {"fork_rule": RULE_NAME, "ruby_ancestor": 2},
     ]
 
 

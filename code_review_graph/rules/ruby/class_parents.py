@@ -12,6 +12,10 @@ parent as written (``DeviseController``, ``Devise::Controllers::ScopedViews``), 
 first line. A parent is a superclass written as a constant, or a module that a statement of the
 class body includes by a constant (``include A, B::C``); ``extend`` adds methods to the class
 itself, not to its objects, and is left alone, as are parents built at run time.
+
+Each edge also carries ``ruby_ancestor``, the parent's place in Ruby's method lookup order
+(``Module#ancestors``), for crg's inheritance index to walk: the last ``include`` statement first
+(``include A, B`` puts ``A`` before ``B``), then the superclass.
 """
 
 from __future__ import annotations
@@ -34,6 +38,8 @@ _CONSTANT_SYNTAX = frozenset({"constant", "scope_resolution"})
 _SUPERCLASS_FIELD, _BODY_FIELD = "superclass", "body"
 _INCLUDE = "include"
 _INHERITS = "INHERITS"
+# `extra` key: the parent's place in Ruby's lookup order, from 1 (read by crg's InheritanceIndex).
+ANCESTOR_KEY = "ruby_ancestor"
 
 
 def add_class_parents(
@@ -48,7 +54,7 @@ def add_class_parents(
     classes = [node for node in nodes if node.kind == "Class"]
     added: list[EdgeInfo] = []
     for syntax in _class_syntax(root):
-        parents = [*_superclass(syntax), *_included_modules(syntax)]
+        parents = [*_included_modules(syntax), *_superclass(syntax)]  # Ruby's lookup order
         owner = crg_class(classes, syntax) if parents else None
         if owner is None:
             continue
@@ -57,9 +63,9 @@ def add_class_parents(
             crg.EdgeInfo(
                 kind=_INHERITS, source=parser._node_qualified(owner), target=parent,
                 file_path=file_path, line=lines(syntax).first,
-                extra={"fork_rule": RULE_NAME},
+                extra={"fork_rule": RULE_NAME, ANCESTOR_KEY: place},
             )
-            for parent in parents
+            for place, parent in enumerate(parents, start=1)
         ]
     return (nodes, [*edges, *added]) if added else (nodes, edges)
 
@@ -85,7 +91,10 @@ def _superclass(syntax: Node) -> list[str]:
 
 
 def _included_modules(syntax: Node) -> list[str]:
-    """The modules the class body includes by a constant (`include A, B::C`)."""
+    """The modules the class body includes by a constant (`include A, B::C`), in lookup order.
+
+    Each `include` puts its modules in front of those included before it.
+    """
     body = syntax.child_by_field_name(_BODY_FIELD)
     included: list[str] = []
     for statement in body.named_children if body is not None else []:
@@ -97,7 +106,7 @@ def _included_modules(syntax: Node) -> list[str]:
         ):
             continue
         arguments = statement.child_by_field_name("arguments")
-        included += [
+        included[:0] = [
             text(argument) for argument in arguments.named_children
             if argument.type in _CONSTANT_SYNTAX
         ] if arguments is not None else []
