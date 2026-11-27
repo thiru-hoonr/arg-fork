@@ -3074,6 +3074,10 @@ class GraphStore:
             own = inheritance.method_of(owner, bare_name)
             if own is not None:
                 return [own], None
+        if edge_extra.get("ruby_class_method"):
+            # crg-fork (SYN-F-641): in a Ruby class method `self` is the class, so no inherited
+            # or included instance method answers; leave it to the usual evidence.
+            return None
         inherited = inheritance.inherited_method(owner, bare_name)
         if inherited is not None:
             return [inherited], owner

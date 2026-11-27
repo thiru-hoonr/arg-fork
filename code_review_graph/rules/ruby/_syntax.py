@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 # `a.b = v` only writes (a call to `b=`); `a.b += v` and `a.b ||= v` read `a.b` first (`b`, `b=`).
 READS_BEFORE_WRITING = {"assignment": False, "operator_assignment": True}
 _LEFT_FIELD = "left"
+# `class Devise::Mapping`: the class's own name is the last part of a scoped name.
+_SCOPED_NAME_SYNTAX = "scope_resolution"
 _SETTER_SUFFIX = "="
 
 
@@ -51,6 +53,23 @@ def names_called(call: Node, method: Node) -> list[str]:
         return [text(method)]
     setter = text(method) + _SETTER_SUFFIX
     return [text(method), setter] if READS_BEFORE_WRITING[assignment.type] else [setter]
+
+
+def crg_class(classes: list[NodeInfo], syntax: Node) -> NodeInfo | None:
+    """crg's Class node for the class or module *syntax*, or None unless exactly one matches.
+
+    The lines alone are not enough: `class A; class B; end; end` gives both the same lines.
+    """
+    name = syntax.child_by_field_name("name")
+    if name is not None and name.type == _SCOPED_NAME_SYNTAX:
+        name = name.child_by_field_name("name")
+    if name is None:
+        return None
+    matches = [
+        node for node in classes
+        if (node.line_start, node.line_end) == lines(syntax) and node.name == text(name)
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
 def file_path_of(nodes: list[NodeInfo]) -> str:

@@ -60,6 +60,12 @@ def _is_interface(language: str, extra: dict) -> bool:
     return False
 
 
+def _ruby_path(qualified_name: str) -> list[str]:
+    """The Ruby constant path of a class's qualified name: ``f.rb::Devise.Mapping`` → Devise,
+    Mapping."""
+    return qualified_name.partition("::")[2].split(".")
+
+
 def _strip_type(raw: str) -> str:
     """``Base<T>`` -> ``Base``; ``Foo[]`` -> ``Foo``; whitespace trimmed."""
     text = raw.strip()
@@ -266,7 +272,30 @@ class InheritanceIndex:
             if isinstance(java_type, str) and "." in _strip_type(java_type):
                 # The parser read the imports and the package for us.
                 return self._java_fqcn.get(_strip_type(java_type))
+        if language == "ruby":
+            # crg-fork (SYN-F-633): Ruby loads a constant with no require (Rails autoload), so
+            # the file's imports say nothing; Ruby's constant lookup does.
+            return self._ruby_constant(child, raw)
         return self.resolve_type(raw, child_file, language)
+
+    def _ruby_constant(self, child: str, raw: str) -> Optional[str]:
+        """The one Ruby class or module the constant path *raw*, written in *child*, means.
+
+        Ruby looks in the modules written around *child*, innermost first, then at the top
+        level; ``::Base`` is the top level only. None when no class fits or two do.
+        """
+        path = raw.removeprefix("::").split("::")
+        around = [] if raw.startswith("::") else _ruby_path(child)[:-1]
+        candidates = [
+            qualified for qualified in self._by_name.get(path[-1], [])
+            if self._classes[qualified][2] == "ruby"
+        ]
+        for depth in range(len(around), -1, -1):
+            wanted = around[:depth] + path
+            found = [qualified for qualified in candidates if _ruby_path(qualified) == wanted]
+            if found:
+                return self._only(found)
+        return None
 
     def _parents_of(self, class_name: str) -> tuple[list[str], bool]:
         """(parents that can hold inherited code, whether any parent is unknown)."""

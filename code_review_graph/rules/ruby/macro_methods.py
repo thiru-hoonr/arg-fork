@@ -35,6 +35,7 @@ from ._syntax import (
     CLASS_METHOD_KEY,
     Lines,
     changed,
+    crg_class,
     file_path_of,
     last_part,
     lines,
@@ -75,8 +76,6 @@ _STATEMENTS_SYNTAX = frozenset({"body_statement", "block_body"})
 _CLASS_SYNTAX = frozenset({"class", "module"})
 _SINGLETON_CLASS_SYNTAX = "singleton_class"
 _BLOCK_SYNTAX = frozenset({"block", "do_block"})
-# `class Devise::Mapping`: the class's own name is the last part of a scoped name.
-_SCOPED_NAME_SYNTAX = "scope_resolution"
 
 
 class Owner(NamedTuple):
@@ -233,7 +232,7 @@ def _functions(
     known = {parser._node_qualified(node) for node in nodes if node.kind in ("Function", "Test")}
     added = []
     for method in methods:
-        owner = _crg_class(classes, method.owner)
+        owner = crg_class(classes, method.owner)
         if owner is None:
             logger.warning(
                 "%s: no Class node of crg's for the class at line %d; %s skipped",
@@ -251,23 +250,6 @@ def _functions(
         )
         added.append(AddedMethod(node, contains, method))
     return added
-
-
-def _crg_class(classes: list[NodeInfo], syntax: Node) -> NodeInfo | None:
-    """crg's Class node for the class or module *syntax*, or None unless exactly one matches.
-
-    The lines alone are not enough: `class A; class B; end; end` gives both the same lines.
-    """
-    name = syntax.child_by_field_name("name")
-    if name is not None and name.type == _SCOPED_NAME_SYNTAX:
-        name = name.child_by_field_name("name")
-    if name is None:
-        return None
-    matches = [
-        node for node in classes
-        if (node.line_start, node.line_end) == lines(syntax) and node.name == text(name)
-    ]
-    return matches[0] if len(matches) == 1 else None
 
 
 def _function(

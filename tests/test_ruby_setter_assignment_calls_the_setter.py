@@ -85,7 +85,11 @@ def test_only_calls_are_renamed_not_the_class_containing_the_getter(tmp_path):
     assert calls_on_line(edges, 2) == [("Account.balance", "balance=")]
 
 
-def test_every_changed_or_added_edge_names_the_rule(tmp_path):
+def test_every_changed_or_added_edge_names_the_rule(tmp_path, monkeypatch):
+    # rule self-receivers marks `self.balance=` later and its tag replaces this rule's
+    monkeypatch.setattr(
+        ruby, "RULES", tuple(r for r in ruby.RULES if r.__name__ != "mark_calls_on_self"),
+    )
     _, edges = parse(tmp_path, "account.rb", account("self.balance += amount"))
 
     setter_calls = [edge for edge in edges if edge.kind == "CALLS" and edge.target == "balance="]

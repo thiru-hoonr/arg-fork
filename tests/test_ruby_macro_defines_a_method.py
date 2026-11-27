@@ -453,7 +453,11 @@ def test_call_linked_to_a_new_method_names_the_rule(tmp_path):
     assert linked[0].extra["fork_rule"] == RULE_NAME
 
 
-def test_call_in_a_define_method_block_names_the_rule(tmp_path):
+def test_call_in_a_define_method_block_names_the_rule(tmp_path, monkeypatch):
+    # rule self-receivers marks this call later and its tag replaces this rule's
+    monkeypatch.setattr(
+        ruby, "RULES", tuple(r for r in ruby.RULES if r.__name__ != "mark_calls_on_self"),
+    )
     _, edges = parse(tmp_path, "subject.rb", "class A\n  define_method(:x) { y(1) }\nend\n")
 
     moved = [e for e in edges if e.kind == "CALLS" and e.target == "y"]

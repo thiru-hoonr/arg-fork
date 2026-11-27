@@ -3,7 +3,7 @@
 Ruby call links that crg 2.4.0 gets wrong, fixed by fork rules in `code_review_graph/rules/ruby/`.
 Each rule reads crg's own tree-sitter tree after the file is parsed; if a rule raises, the file
 keeps crg's nodes and edges and a warning is logged. Findings: SYN-F-625, SYN-F-627, SYN-F-629,
-SYN-F-630, SYN-F-631, SYN-F-632.
+SYN-F-630, SYN-F-631, SYN-F-632, SYN-F-633.
 
 Results are measured on devise (`heartcombo/devise` @ `05811fb`) against the calls its own test
 suite really makes: the suite (878 runs, 0 failures) runs with Ruby's `TracePoint` on `:call`,
@@ -26,3 +26,4 @@ the twin.
 | 5 | [eval-strings](05-eval-strings.md) | code in a `class_eval` / `module_eval` / `instance_eval` string stored as a string (twin: the code written in place) | 2026-11-26 |
 | 6 | [setter-definitions](06-setter-definitions.md) | no Function for a setter (`def resource=`), so no setter call can link | 2026-11-26 |
 | 7 | [constant-receivers](07-constant-receivers.md) | a library call on a class (`Devise.paranoid`) carries no class, so crg cannot follow it to another file | 2026-11-27 |
+| 8 | [class-hierarchy](08-class-hierarchy.md) | a Ruby class has no parents for crg, so a call on `self` never reaches an inherited or included method | 2026-11-27 |

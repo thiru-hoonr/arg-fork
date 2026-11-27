@@ -8,7 +8,9 @@ Rules rely on these crg internals; check each when rebasing the fork onto a new 
 ``CodeParser._resolve_call_targets`` (crg's same-file call linking, run again by a rule that adds
 Functions), ``CodeParser._repo_root`` and ``parser._is_test_function`` (whether crg makes a Test),
 ``CodeParser._collect_ruby_test_receivers`` (the class crg reads for each Ruby call's receiver),
-and the ``unresolved_targets`` key in an edge's ``extra``, which crg's post-build pass leaves alone.
+the ``receiver: self`` key, which crg's post-build pass looks up in the caller's class and its
+parents (``GraphStore._class_backed_candidates``), and the ``unresolved_targets`` key in an
+edge's ``extra``, which crg's post-build pass leaves alone.
 """
 
 from __future__ import annotations
