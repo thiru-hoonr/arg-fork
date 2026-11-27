@@ -12,6 +12,7 @@ from .macro_methods import add_methods_made_by_macros
 from .self_receivers import mark_calls_on_self
 from .setter_assignments import store_setter_assignments_as_setter_calls
 from .setter_definitions import add_setter_definitions
+from .super_calls import add_super_calls
 
 RULES: tuple[Rule, ...] = (
     # First, as crg stamps a test file's receivers while it extracts: every later rule reads a
@@ -33,4 +34,6 @@ RULES: tuple[Rule, ...] = (
     add_class_parents,
     unlink_class_receiver_calls_from_instance_methods,
     mark_calls_on_self,
+    # Last: its calls already carry their receiver (`super`), which no rule above should read.
+    add_super_calls,
 )

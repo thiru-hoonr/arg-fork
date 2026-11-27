@@ -27,3 +27,4 @@ the twin.
 | 6 | [setter-definitions](06-setter-definitions.md) | no Function for a setter (`def resource=`), so no setter call can link | 2026-11-26 |
 | 7 | [constant-receivers](07-constant-receivers.md) | a library call on a class (`Devise.paranoid`) carries no class, so crg cannot follow it to another file | 2026-11-27 |
 | 8 | [class-hierarchy](08-class-hierarchy.md) | a Ruby class has no parents for crg, so a call on `self` never reaches an inherited or included method | 2026-11-27 |
+| 9 | [super-calls](09-super-calls.md) | Ruby `super` stored as no call, so a method never reaches the parent method it extends | 2026-11-27 |

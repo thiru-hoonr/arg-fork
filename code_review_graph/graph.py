@@ -3081,6 +3081,11 @@ class GraphStore:
         inherited = inheritance.inherited_method(owner, bare_name)
         if inherited is not None:
             return [inherited], owner
+        if receiver in _SUPER_RECEIVERS and caller_language == "ruby":
+            # crg-fork (SYN-F-634): Ruby's `super` with no parent method in the graph runs a
+            # method outside it (`ActiveRecord::Base`); the usual evidence would pick the
+            # caller's own same-named method, the one `super` never means.
+            return [], None
         if receiver in _SELF_RECEIVERS or receiver in _SUPER_RECEIVERS:
             # A trait, or a parent the graph cannot name, may hold it; leave
             # the call to the usual evidence, as before.
