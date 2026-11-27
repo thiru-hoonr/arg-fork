@@ -5,13 +5,17 @@ from __future__ import annotations
 from .._rule import Rule
 from .bare_name_calls import store_bare_names_as_calls
 from .class_receiver_calls import unlink_class_receiver_calls_from_instance_methods
+from .constant_receivers import stamp_constant_receivers
 from .eval_strings import add_code_from_eval_strings
 from .macro_methods import add_methods_made_by_macros
 from .setter_assignments import store_setter_assignments_as_setter_calls
 from .setter_definitions import add_setter_definitions
 
 RULES: tuple[Rule, ...] = (
-    # First: adds the Functions macros make, so every later rule sees the file's methods.
+    # First, as crg stamps a test file's receivers while it extracts: every later rule reads a
+    # library call on a class (`Devise.paranoid`) the way it reads the same call in a test.
+    stamp_constant_receivers,
+    # Adds the Functions macros make, so every later rule sees the file's methods.
     add_methods_made_by_macros,
     # Runs crg, these rules included, on the code in class_eval strings, and adds what it finds
     # on the strings' lines; the rules below then read the file with that code in it.

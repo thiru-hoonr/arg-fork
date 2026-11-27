@@ -25,3 +25,4 @@ the twin.
 | 4 | [macro-methods](04-macro-methods.md) | no Function for a method a class-body macro makes (`mattr_accessor`, `delegate`, `attr_reader`, …) | 2026-11-26 |
 | 5 | [eval-strings](05-eval-strings.md) | code in a `class_eval` / `module_eval` / `instance_eval` string stored as a string (twin: the code written in place) | 2026-11-26 |
 | 6 | [setter-definitions](06-setter-definitions.md) | no Function for a setter (`def resource=`), so no setter call can link | 2026-11-26 |
+| 7 | [constant-receivers](07-constant-receivers.md) | a library call on a class (`Devise.paranoid`) carries no class, so crg cannot follow it to another file | 2026-11-27 |
