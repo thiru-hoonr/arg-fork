@@ -15,7 +15,8 @@ itself, not to its objects, and is left alone, as are parents built at run time.
 
 Each edge also carries ``ruby_ancestor``, the parent's place in Ruby's method lookup order
 (``Module#ancestors``), for crg's inheritance index to walk: the last ``include`` statement first
-(``include A, B`` puts ``A`` before ``B``), then the superclass.
+(``include A, B`` puts ``A`` before ``B``), then the superclass. An included module's edge also
+carries ``ruby_include``, as a module's methods can call the methods of the classes including it.
 """
 
 from __future__ import annotations
@@ -40,6 +41,8 @@ _INCLUDE = "include"
 _INHERITS = "INHERITS"
 # `extra` key: the parent's place in Ruby's lookup order, from 1 (read by crg's InheritanceIndex).
 ANCESTOR_KEY = "ruby_ancestor"
+# `extra` key on the edge to an included module (read by crg's InheritanceIndex).
+INCLUDE_KEY = "ruby_include"
 
 
 def add_class_parents(
@@ -54,7 +57,8 @@ def add_class_parents(
     classes = [node for node in nodes if node.kind == "Class"]
     added: list[EdgeInfo] = []
     for syntax in _class_syntax(root):
-        parents = [*_included_modules(syntax), *_superclass(syntax)]  # Ruby's lookup order
+        included = _included_modules(syntax)
+        parents = [*included, *_superclass(syntax)]  # Ruby's lookup order
         owner = crg_class(classes, syntax) if parents else None
         if owner is None:
             continue
@@ -63,7 +67,10 @@ def add_class_parents(
             crg.EdgeInfo(
                 kind=_INHERITS, source=parser._node_qualified(owner), target=parent,
                 file_path=file_path, line=lines(syntax).first,
-                extra={"fork_rule": RULE_NAME, ANCESTOR_KEY: place},
+                extra={
+                    "fork_rule": RULE_NAME, ANCESTOR_KEY: place,
+                    **({INCLUDE_KEY: True} if place <= len(included) else {}),
+                },
             )
             for place, parent in enumerate(parents, start=1)
         ]

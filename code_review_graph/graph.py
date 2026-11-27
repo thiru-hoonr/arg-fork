@@ -3081,6 +3081,11 @@ class GraphStore:
         inherited = inheritance.inherited_method(owner, bare_name)
         if inherited is not None:
             return [inherited], owner
+        if receiver in _SELF_RECEIVERS and caller_language == "ruby":
+            # crg-fork (SYN-F-636): in a Ruby module, `self` is an object of a class including it.
+            includer = inheritance.ruby_includer_method(owner, bare_name)
+            if includer is not None:
+                return [includer], None
         if receiver in _SUPER_RECEIVERS and caller_language == "ruby":
             # crg-fork (SYN-F-634): Ruby's `super` with no parent method in the graph runs a
             # method outside it (`ActiveRecord::Base`); the usual evidence would pick the

@@ -41,6 +41,8 @@ _MAX_DEPTH = 32
 #: crg-fork (SYN-F-635): INHERITS ``extra`` key fork rule ``class-parents`` writes: the parent's
 #: place in Ruby's method lookup order, from 1.
 _RUBY_ANCESTOR = "ruby_ancestor"
+#: crg-fork (SYN-F-636): INHERITS ``extra`` key on an edge to a module the class includes.
+_RUBY_INCLUDE = "ruby_include"
 
 
 def _load_extra(raw: Optional[str]) -> dict:
@@ -167,6 +169,7 @@ class InheritanceIndex:
 
         self._parents: dict[str, tuple[list[str], bool]] = {}
         self._ruby_parents: dict[str, list[Optional[str]]] = {}
+        self._ruby_includers: Optional[dict[str, set[str]]] = None
         self._inherited: dict[tuple[str, str], Optional[str]] = {}
 
     # -- Lookups ------------------------------------------------------------
@@ -370,6 +373,26 @@ class InheritanceIndex:
         else:
             return None
         return next(iter(found)) if len(found) == 1 else None
+
+    def ruby_includer_method(self, module: str, method: str) -> Optional[str]:
+        """crg-fork (SYN-F-636): the one *method* the classes and modules including *module* have.
+
+        In a Ruby module's method, ``self`` is an object of a class that includes the module, so a
+        call the module and its ancestors do not answer can be the includer's own method. None
+        when no includer declares it or two declare different ones.
+        """
+        if self._ruby_includers is None:
+            self._ruby_includers = {}
+            for child, raw_parents in self._raw_parents.items():
+                for raw, extra in raw_parents:
+                    parent = extra.get(_RUBY_INCLUDE) and self._resolve_parent(child, raw, extra)
+                    if parent:
+                        self._ruby_includers.setdefault(parent, set()).add(child)
+        return self._only([
+            self._methods[(includer, method)]
+            for includer in self._ruby_includers.get(module, ())
+            if (includer, method) in self._methods
+        ])
 
     def _ruby_walk(self, class_name: str, method: str) -> Optional[str]:
         """crg-fork (SYN-F-635): the method Ruby runs, found in Ruby's ancestor order.

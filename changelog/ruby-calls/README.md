@@ -29,3 +29,4 @@ the twin.
 | 8 | [class-hierarchy](08-class-hierarchy.md) | a Ruby class has no parents for crg, so a call on `self` never reaches an inherited or included method | 2026-11-27 |
 | 9 | [super-calls](09-super-calls.md) | Ruby `super` stored as no call, so a method never reaches the parent method it extends | 2026-11-27 |
 | 10 | [ancestor-order](10-ancestor-order.md) | crg walks a Ruby class's parents as multiple inheritance, so a class with an included module and a parent outside the graph gets no inherited method | 2026-11-27 |
+| 11 | [module-includers](11-module-includers.md) | a call in a Ruby module to a method only the classes including it declare stays unlinked | 2026-11-27 |
