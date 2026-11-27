@@ -8,6 +8,7 @@ Supports impact-radius queries and subgraph extraction.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import logging
@@ -64,6 +65,56 @@ from .migrations import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: crg-fork (SYN-F-637): the optional dump of a booted Ruby app, in ``<repo>/.code-review-graph/``.
+_RUBY_RUNTIME_FILE = "ruby-runtime.json"
+
+
+@functools.lru_cache(maxsize=4)
+def _read_ruby_runtime(
+    path: str, mtime_ns: int, size: int,
+) -> Optional[tuple[dict[str, str], dict[str, dict]]]:
+    """crg-fork (SYN-F-637): (file hashes, modules) of the dump at *path*, read once per version.
+
+    *mtime_ns* and *size* only key the cache. Each module keeps ``methods`` as a dict.
+    """
+    try:
+        loaded = json.loads(Path(path).read_text())
+    except (OSError, ValueError) as error:
+        logger.warning("ignoring Ruby runtime dump %s: %s", path, error)
+        return None
+    if not isinstance(loaded, dict) or not isinstance(loaded.get("files"), dict) or not isinstance(
+        loaded.get("modules"), dict
+    ):
+        logger.warning("ignoring Ruby runtime dump %s: no 'files' and 'modules' objects", path)
+        return None
+    modules = {
+        name: {**row, "methods": row["methods"] if isinstance(row.get("methods"), dict) else {}}
+        for name, row in loaded["modules"].items() if isinstance(row, dict)
+    }
+    return loaded["files"], modules
+
+
+@functools.lru_cache(maxsize=65536)
+def _file_sha256(path: str, mtime_ns: int, size: int) -> Optional[str]:
+    """crg-fork (SYN-F-637): SHA-256 of the file at *path*; *mtime_ns* and *size* key the cache."""
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _unchanged_since_dump(root: Path, relative: str, hashes: dict[str, str]) -> bool:
+    """crg-fork (SYN-F-637): whether *relative* still has the hash the Ruby runtime dump saw."""
+    path = root / relative
+    try:
+        stat = path.stat()
+    except OSError:
+        return False
+    expected = hashes.get(relative)
+    actual = _file_sha256(str(path), stat.st_mtime_ns, stat.st_size)
+    return expected is not None and actual == expected
+
 
 # Maximum rows bound into a single executemany() call for batched writes.
 # Chunking keeps peak memory bounded, while the surrounding transaction and
@@ -3078,6 +3129,12 @@ class GraphStore:
             # crg-fork (SYN-F-641): in a Ruby class method `self` is the class, so no inherited
             # or included instance method answers; leave it to the usual evidence.
             return None
+        if receiver in _SELF_RECEIVERS and caller_language == "ruby":
+            # crg-fork (SYN-F-637): Ruby's own answer, from the dump of the booted app, when the
+            # class does not declare the method itself (modules included at run time).
+            runtime = inheritance.ruby_runtime_method(owner, bare_name)
+            if runtime is not None:
+                return [runtime], None
         inherited = inheritance.inherited_method(owner, bare_name)
         if inherited is not None:
             return [inherited], owner
@@ -3179,6 +3236,35 @@ class GraphStore:
         return cls._receiver_evidence_admits_candidate(
             edge_extra, node.qualified_name, node.file_path, node.parent_name,
         )
+
+    def _ruby_runtime(self) -> Optional[dict]:
+        """crg-fork (SYN-F-637): the classes of the optional dump of a booted Ruby app, or None.
+
+        ``<repo>/.code-review-graph/ruby-runtime.json`` holds ``files``, the SHA-256 of each source
+        file when the app was booted, and ``modules``: per class or module, its ``kind``, its
+        ``ancestors`` and the ``file:line`` of each method its objects answer, as Ruby resolved
+        them. A method in a file changed since then (or with no hash) is dropped, as its line may
+        have moved. Absent: None; unreadable or malformed: None and a warning.
+        """
+        root = self.get_repo_root()
+        if not root:
+            return None
+        path = Path(root) / ".code-review-graph" / _RUBY_RUNTIME_FILE
+        try:
+            stat = path.stat()
+        except OSError:
+            return None
+        dump = _read_ruby_runtime(str(path), stat.st_mtime_ns, stat.st_size)
+        if dump is None:
+            return None
+        hashes, modules = dump
+        return {
+            name: {**row, "methods": {
+                method: place for method, place in row["methods"].items()
+                if _unchanged_since_dump(Path(root), str(place).rpartition(":")[0], hashes)
+            }}
+            for name, row in modules.items()
+        }
 
     def resolve_bare_call_targets(self) -> int:
         """Resolve bare CALLS targets backed by same-file or import evidence.
@@ -3326,7 +3412,9 @@ class GraphStore:
         if not work:
             return 0
         import_targets, _, raw_imports = self._import_evidence()
-        inheritance = InheritanceIndex(conn, import_targets, raw_imports)
+        inheritance = InheritanceIndex(
+            conn, import_targets, raw_imports, self._ruby_runtime(), self.get_repo_root(),
+        )
 
         moves: dict[str, list[tuple[str, str, int]]] = {}
         reverts: dict[str, list[tuple[str, str, str, float, int]]] = {}
@@ -4002,7 +4090,9 @@ class GraphStore:
         # Stream candidate rows lazily instead of materialising the full set
         # into memory (millions of rows on large graphs, issue #721).
         bare_edges = conn.execute(select_sql, (kind,))
-        inheritance = InheritanceIndex(conn, import_targets, raw_imports)
+        inheritance = InheritanceIndex(
+            conn, import_targets, raw_imports, self._ruby_runtime(), self.get_repo_root(),
+        )
         # The function making the call: the edge's source for CALLS, and its
         # target for TESTED_BY, whose source is the callee.
         caller_column = (

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from typing import Optional
+from typing import NamedTuple, Optional
 
 #: Languages where a class has one superclass and its other parents are
 #: interfaces. A parent the graph cannot name is then taken to be an interface
@@ -43,6 +43,15 @@ _MAX_DEPTH = 32
 _RUBY_ANCESTOR = "ruby_ancestor"
 #: crg-fork (SYN-F-636): INHERITS ``extra`` key on an edge to a module the class includes.
 _RUBY_INCLUDE = "ruby_include"
+
+
+class MethodPlace(NamedTuple):
+    """crg-fork (SYN-F-637): where a method is defined, and its name: how the Ruby runtime dump
+    and the graph's nodes meet."""
+
+    file: str
+    line: int
+    name: str
 
 
 def _load_extra(raw: Optional[str]) -> dict:
@@ -96,6 +105,8 @@ class InheritanceIndex:
         conn: sqlite3.Connection,
         import_targets: dict[str, set[str]],
         raw_imports: dict[str, dict[str, str]],
+        ruby_runtime: Optional[dict] = None,
+        repo_root: Optional[str] = None,
     ) -> None:
         self._imports = import_targets
         self._raw_imports = raw_imports
@@ -171,6 +182,13 @@ class InheritanceIndex:
         self._ruby_parents: dict[str, list[Optional[str]]] = {}
         self._ruby_includers: Optional[dict[str, set[str]]] = None
         self._inherited: dict[tuple[str, str], Optional[str]] = {}
+        # crg-fork (SYN-F-637): Ruby name -> {method: method node}, and module -> its includers,
+        # from the dump of a booted app; empty without one.
+        self._runtime_methods: dict[str, dict[str, str]] = {}
+        self._runtime_includers: dict[str, list[str]] = {}
+        self._runtime_modules: set[str] = set()
+        if ruby_runtime and repo_root:
+            self._load_ruby_runtime(conn, ruby_runtime, repo_root)
 
     # -- Lookups ------------------------------------------------------------
 
@@ -393,6 +411,51 @@ class InheritanceIndex:
             for includer in self._ruby_includers.get(module, ())
             if (includer, method) in self._methods
         ])
+
+    def ruby_runtime_method(self, class_name: str, method: str) -> Optional[str]:
+        """crg-fork (SYN-F-637): the method a call to *method* on ``self`` runs, as the booted app's
+        Ruby resolved it for *class_name*; for a module (``"kind": "module"``), the one method the
+        classes including it resolve. A class's own entry is complete: its subclasses are no answer.
+
+        None without a dump, or when the dump names no method of the graph, or includers disagree.
+        """
+        ruby_name = "::".join(_ruby_path(class_name))
+        own = self._runtime_methods.get(ruby_name)
+        if own is not None and method in own:
+            return own[method]
+        if ruby_name not in self._runtime_modules:
+            return None
+        return self._only([
+            self._runtime_methods[includer][method]
+            for includer in self._runtime_includers.get(ruby_name, ())
+            if method in self._runtime_methods[includer]
+        ])
+
+    def _load_ruby_runtime(self, conn: sqlite3.Connection, dump: dict, repo_root: str) -> None:
+        """crg-fork (SYN-F-637): read the dump's ``file:line`` method places as method nodes."""
+        at: dict[MethodPlace, str] = {}
+        for row in conn.execute(
+            "SELECT qualified_name, name, file_path, line_start FROM nodes "
+            "WHERE kind IN ('Function', 'Test') AND language = 'ruby'"
+        ):
+            place = MethodPlace(row["file_path"], row["line_start"], row["name"])
+            at[place] = row["qualified_name"]
+        root = repo_root.rstrip("/")
+        for ruby_name, row in dump.items():  # rows checked by GraphStore._ruby_runtime
+            found: dict[str, str] = {}
+            for method, written in row["methods"].items():
+                file_part, _, line = str(written).rpartition(":")
+                wanted = line.isdigit() and MethodPlace(f"{root}/{file_part}", int(line), method)
+                node = wanted and at.get(wanted)
+                if node:
+                    found[method] = node
+            self._runtime_methods[ruby_name] = found
+            if row.get("kind") == "module":
+                self._runtime_modules.add(ruby_name)
+            ancestors = row.get("ancestors")
+            ancestors = ancestors if isinstance(ancestors, list) else []
+            for ancestor in ancestors:  # a class among its own: its entry answered first
+                self._runtime_includers.setdefault(ancestor, []).append(ruby_name)
 
     def _ruby_walk(self, class_name: str, method: str) -> Optional[str]:
         """crg-fork (SYN-F-635): the method Ruby runs, found in Ruby's ancestor order.

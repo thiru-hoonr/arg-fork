@@ -30,3 +30,4 @@ the twin.
 | 9 | [super-calls](09-super-calls.md) | Ruby `super` stored as no call, so a method never reaches the parent method it extends | 2026-11-27 |
 | 10 | [ancestor-order](10-ancestor-order.md) | crg walks a Ruby class's parents as multiple inheritance, so a class with an included module and a parent outside the graph gets no inherited method | 2026-11-27 |
 | 11 | [module-includers](11-module-includers.md) | a call in a Ruby module to a method only the classes including it declare stays unlinked | 2026-11-27 |
+| 12 | [runtime-dump](12-runtime-dump.md) | modules a Ruby app includes at run time (`on_load`, `devise :…`) are invisible to crg; an optional dump of the booted app gives Ruby's own answer | 2026-11-27 |

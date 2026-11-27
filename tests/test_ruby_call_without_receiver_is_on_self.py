@@ -13,6 +13,8 @@ target the plain name).
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -209,3 +211,17 @@ def test_a_call_in_a_class_method_does_not_reach_an_inherited_instance_method(tm
 
     assert linked_target(tmp_path, files) == "work"  # left unlinked
 
+
+def test_a_call_in_a_class_method_is_not_answered_by_the_runtime_dump(tmp_path):
+    graph_dir = tmp_path / ".code-review-graph"
+    graph_dir.mkdir()
+    files = {
+        "helpers.rb": "module Helpers\n  def work; end\nend\n",
+        "child.rb": "class Child\n  def self.go\n    work\n  end\nend\n",
+    }
+    hashes = {name: hashlib.sha256(text.encode()).hexdigest() for name, text in files.items()}
+    (graph_dir / "ruby-runtime.json").write_text(json.dumps({"files": hashes, "modules": {
+        "Child": {"kind": "class", "ancestors": ["Child"], "methods": {"work": "helpers.rb:2"}},
+    }}))
+
+    assert linked_target(tmp_path, files) == "work"  # left unlinked
